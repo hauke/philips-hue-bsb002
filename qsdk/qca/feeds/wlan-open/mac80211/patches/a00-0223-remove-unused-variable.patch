@@ -1,0 +1,44 @@
+--- a/drivers/net/wireless/ath/ath10k/hw.c
++++ b/drivers/net/wireless/ath/ath10k/hw.c
+@@ -19,7 +19,6 @@
+ #include "hw.h"
+ 
+ const struct ath10k_hw_regs qca988x_regs = {
+-	.rtc_state_cold_reset_mask	= 0x00000400,
+ 	.rtc_soc_base_address		= 0x00004000,
+ 	.rtc_wmac_base_address		= 0x00005000,
+ 	.soc_core_base_address		= 0x00009000,
+@@ -46,7 +45,6 @@ const struct ath10k_hw_regs qca988x_regs
+ };
+ 
+ const struct ath10k_hw_regs qca6174_regs = {
+-	.rtc_state_cold_reset_mask		= 0x00002000,
+ 	.rtc_soc_base_address			= 0x00000800,
+ 	.rtc_wmac_base_address			= 0x00001000,
+ 	.soc_core_base_address			= 0x0003a000,
+@@ -73,7 +71,6 @@ const struct ath10k_hw_regs qca6174_regs
+ };
+ 
+ const struct ath10k_hw_regs qca99x0_regs = {
+-	.rtc_state_cold_reset_mask		= 0x00000400,
+ 	.rtc_soc_base_address			= 0x00080000,
+ 	.rtc_wmac_base_address			= 0x00000000,
+ 	.soc_core_base_address			= 0x00082000,
+--- a/drivers/net/wireless/ath/ath10k/hw.h
++++ b/drivers/net/wireless/ath/ath10k/hw.h
+@@ -209,7 +209,6 @@ enum ath10k_hw_rev {
+ };
+ 
+ struct ath10k_hw_regs {
+-	u32 rtc_state_cold_reset_mask;
+ 	u32 rtc_soc_base_address;
+ 	u32 rtc_wmac_base_address;
+ 	u32 soc_core_base_address;
+@@ -525,7 +524,6 @@ enum ath10k_hw_4addr_pad {
+ /* as of IP3.7.1 */
+ #define RTC_STATE_V_ON				ar->hw_values->rtc_state_val_on
+ 
+-#define RTC_STATE_COLD_RESET_MASK		ar->regs->rtc_state_cold_reset_mask
+ #define RTC_STATE_V_LSB				0
+ #define RTC_STATE_V_MASK			0x00000007
+ #define RTC_STATE_ADDRESS			0x0000

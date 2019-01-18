@@ -1,0 +1,38 @@
+From c5fe43461ebc1aaaf2b55177a701267d9792cc34 Mon Sep 17 00:00:00 2001
+From: Pieter Smith <pieter.smith@philips.com>
+Date: Wed, 23 Nov 2016 13:19:25 +0100
+Subject: [PATCH 1/2] Use readv/writev instead of preadv/pwritev
+
+All calls to preadv and pwritev specified an offset of zero,
+making them equivalent to readv/writev.
+Older versions of uclibc lack preadv/pwritev. Eliminating them
+makes platform support easier.
+---
+ src/util.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/util.c b/src/util.c
+index 6bb279c..19a79d7 100644
+--- a/src/util.c
++++ b/src/util.c
+@@ -290,7 +290,7 @@ int file_write(int fd, void *buf, size_t sz)
+ 	ssize_t ret;
+ 	iov[0].iov_base = buf;
+ 	iov[0].iov_len = sz;
+-	ret = IGNORE_EINTR (pwritev (fd, iov, 1, 0));
++	ret = IGNORE_EINTR (writev (fd, iov, 1));
+ 	if (ret != sz)
+ 	{
+ 		return -1;
+@@ -332,7 +332,7 @@ int file_read(int fd, void *buf, size_t sz)
+ 	struct iovec iov[1];
+ 	iov[0].iov_base = buf;
+ 	iov[0].iov_len = sz;
+-	if (preadv (fd, iov, 1, 0) != sz)
++	if (readv (fd, iov, 1) != sz)
+ 	{
+ 		/* Returns -1 on read failure */
+ 		return -1;
+-- 
+2.7.4
+

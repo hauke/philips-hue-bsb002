@@ -1,0 +1,25 @@
+From be3f7e3ed23a0befde664f959897cf5500d92fef Mon Sep 17 00:00:00 2001
+From: Pieter Smith <pieter.smith@philips.com>
+Date: Tue, 27 Mar 2018 16:17:30 +0200
+Subject: [PATCH] memmove: disable use of memcpy()
+
+---
+ libc/string/generic/memmove.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libc/string/generic/memmove.c b/libc/string/generic/memmove.c
+index bf78c47..e24db46 100644
+--- a/libc/string/generic/memmove.c
++++ b/libc/string/generic/memmove.c
+@@ -23,6 +23,8 @@
+ #include "memcopy.h"
+ #include "pagecopy.h"
+ 
++#define __ARCH_HAS_BWD_MEMCPY__
++
+ #ifdef __ARCH_HAS_BWD_MEMCPY__
+ /* generic-opt memmove assumes memcpy does forward copying! */
+ #include "_memcpy_fwd.c"
+-- 
+2.7.4
+

@@ -1,0 +1,21 @@
+--- a/Makefile
++++ b/Makefile
+@@ -39,3 +39,18 @@ clean:
+ 
+ .PHONY: all clean test
+ 
++HEADERS := jsmn.h
++H_DIR := .
++prefix := /usr
++libdir := $(prefix)/lib
++includedir := $(prefix)/include
++
++install: libjsmn.a
++	@if [ ! -d $(DESTDIR)$(libdir) ]; then mkdir -p $(DESTDIR)$(libdir); fi
++	@if [ ! -d $(DESTDIR)$(includedir) ]; then mkdir -p $(DESTDIR)$(includedir); fi
++	cp libjsmn.a $(DESTDIR)$(libdir)
++	chmod 644 $(DESTDIR)$(libdir)/libjsmn.a
++	$(foreach header,$(HEADERS),cp $(H_DIR)/$(header) $(DESTDIR)$(includedir); )
++	$(foreach header,$(HEADERS),chmod 644 $(DESTDIR)$(includedir)/$(header); )
++
++.PHONY: install

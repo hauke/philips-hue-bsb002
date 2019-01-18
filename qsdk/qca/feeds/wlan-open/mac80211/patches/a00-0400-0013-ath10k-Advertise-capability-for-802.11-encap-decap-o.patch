@@ -1,0 +1,79 @@
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -39,6 +39,7 @@ static unsigned int ath10k_cryptmode_par
+ static bool uart_print;
+ static bool skip_otp;
+ static bool rawmode;
++static bool ethernet_mode = true;
+ bool bug_on_fw_assert = true;
+ bool ath10k_enable_smart_antenna = false;
+ 
+@@ -47,6 +48,7 @@ module_param_named(cryptmode, ath10k_cry
+ module_param(uart_print, bool, 0644);
+ module_param(skip_otp, bool, 0644);
+ module_param(rawmode, bool, 0644);
++module_param(ethernet_mode, bool, 0644);
+ module_param(bug_on_fw_assert, bool, 0644);
+ module_param_named(enable_smart_antenna, ath10k_enable_smart_antenna,
+ 		   bool, 0644);
+@@ -56,6 +58,7 @@ MODULE_PARM_DESC(uart_print, "Uart targe
+ MODULE_PARM_DESC(skip_otp, "Skip otp failure for calibration in testmode");
+ MODULE_PARM_DESC(cryptmode, "Crypto mode: 0-hardware, 1-software");
+ MODULE_PARM_DESC(rawmode, "Use raw 802.11 frame datapath");
++MODULE_PARM_DESC(ethernet_mode, "Use ethernet frame datapath");
+ MODULE_PARM_DESC(bug_on_fw_assert, "Bug on firmware assert");
+ MODULE_PARM_DESC(enable_smart_antenna, "Enable smart antenna supprot in fw");
+ 
+@@ -2247,6 +2250,13 @@ static void ath10k_core_register_work(st
+ 	struct ath10k *ar = container_of(work, struct ath10k, register_work);
+ 	int status;
+ 
++	if (ethernet_mode && rawmode) {
++		ath10k_err(ar, "invalid configuration, ethernet and rawmode data path can not coexist\n");
++		status = -EINVAL;
++		goto err;
++	}
++	ar->ethernet_mode = ethernet_mode;
++
+ 	status = ath10k_core_probe_fw(ar);
+ 	if (status) {
+ 		ath10k_err(ar, "could not probe fw (%d)\n", status);
+--- a/drivers/net/wireless/ath/ath10k/core.h
++++ b/drivers/net/wireless/ath/ath10k/core.h
+@@ -1040,6 +1040,14 @@ struct ath10k {
+ 	struct ath10k_per_peer_tx_stats peer_tx_stats;
+ #endif /*CPTCFG_MAC80211_DEBUGFS*/
+ 
++	/* Whether ethernet frame format data path is supported. This mode
++	 * should not co-exist with raw mode configuration. Please note that
++	 * this is just to maintain the capability, the actual tx/rx mode
++	 * configuration would come from mac80211 based on the driver's
++	 * capability per interface type.
++	 */
++	bool ethernet_mode;
++
+ 	/* must be last */
+ 	u8 drv_priv[0] __aligned(sizeof(void *));
+ };
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -8089,7 +8089,6 @@ int ath10k_mac_register(struct ath10k *a
+ 	ieee80211_hw_set(ar->hw, HAS_RATE_CONTROL);
+ 	ieee80211_hw_set(ar->hw, AP_LINK_PS);
+ 	ieee80211_hw_set(ar->hw, SPECTRUM_MGMT);
+-	ieee80211_hw_set(ar->hw, SUPPORT_FAST_XMIT);
+ 	ieee80211_hw_set(ar->hw, CONNECTION_MONITOR);
+ 	ieee80211_hw_set(ar->hw, SUPPORTS_PER_STA_GTK);
+ 	ieee80211_hw_set(ar->hw, WANT_MONITOR_VIF);
+@@ -8097,6 +8096,11 @@ int ath10k_mac_register(struct ath10k *a
+ 	ieee80211_hw_set(ar->hw, QUEUE_CONTROL);
+ 	ieee80211_hw_set(ar->hw, SUPPORTS_REORDERING_BUFFER);
+ 
++	if (ar->ethernet_mode)
++		ieee80211_hw_set(ar->hw, SUPPORTS_80211_ENCAP_DECAP);
++	else
++		ieee80211_hw_set(ar->hw, SUPPORT_FAST_XMIT);
++
+ 	if (!test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags))
+ 		ieee80211_hw_set(ar->hw, SW_CRYPTO_CONTROL);
+ 

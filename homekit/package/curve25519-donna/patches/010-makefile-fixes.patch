@@ -1,0 +1,141 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1,56 +1,87 @@
+-CFLAGS=-Wmissing-prototypes -Wdeclaration-after-statement -O2 -Wall
+-CFLAGS_32=-m32
+-
+-targets: curve25519-donna.a curve25519-donna-c64.a
+-
+-test: test-donna test-donna-c64
++NAME		:= libcurve25519-donna
++MAJOR		:= 1
++MINOR		:= 0
++VER		:= $(MAJOR).$(MINOR)
++DNAMEM_32	:= $(NAME).so.$(MAJOR)
++DNAMEV_32	:= $(NAME).so.$(VER)
++DNAME_32	:= $(NAME).so
++SNAME_32	:= $(NAME).a
++DNAMEM_64	:= $(NAME)-x86-64.so.$(MAJOR)
++DNAMEV_64	:= $(NAME)-x86-64.so.$(VER)
++DNAME_64	:= $(NAME)-x86-64.so
++SNAME_64	:= $(NAME)-x86-64.a
++SRC_32		:= curve25519-donna.c
++SRC_64		:= curve25519-donna-c64.c
++HEADERS		:= curve25519-donna.h
++H_DIR		:= .
++OBJ_32		:= $(SRC_32:.c=.o)
++OBJ_64		:= $(SRC_64:.c=.o)
++OBJS		:= $(OBJ_32) $(OBJ_64)
++CFLAGS		+= -std=c99 -Wall -W -Werror -O3 -fPIC -I.
++LDFLAGS		+=
++
++prefix		:=/usr
++libdir		:=$(prefix)/lib
++lib64dir	:=$(prefix)/lib64
++includedir	:=$(prefix)/include
++
++.PHONY: all clean fclean install rebuild
++
++# Compile 32 bit only for now
++#all: $(SNAME_32) $(DNAMEV_32) $(SNAME_64) $(DNAMEV_64)
++all: $(SNAME_32) $(DNAMEV_32)
++
++$(SNAME_32): $(OBJ_32)
++	$(AR) $(ARFLAGS) $@ $^
++
++$(SNAME_64): $(OBJ_64)
++	$(AR) $(ARFLAGS) $@ $^
++
++$(DNAMEV_32): LDFLAGS += -shared -Wl,-soname,$(DNAMEM_32)
++$(DNAMEV_32): $(OBJ_32)
++	$(CC) $(LDFLAGS) $^ -o $@
++	rm -f $(DNAMEM_32) $(DNAME_32)
++	ln -s $@ $(DNAMEM_32)
++	ln -s $(DNAMEM_32) $(DNAME_32)
++
++$(DNAMEV_64): LDFLAGS += -shared -Wl,-soname,$(DNAMEM_64)
++$(DNAMEV_64): $(OBJ_64)
++	$(CC) $(LDFLAGS) $^ -o $@
++	rm -f $(DNAMEM_64) $(DNAME_64)
++	ln -s $@ $(DNAMEM_64)
++	ln -s $(DNAMEM_64) $(DNAME_64)
+ 
+ clean:
+-	rm -f *.o *.a *.pp test-curve25519-donna test-curve25519-donna-c64 speed-curve25519-donna speed-curve25519-donna-c64 test-noncanon-curve25519-donna test-noncanon-curve25519-donna-c64
+-
+-curve25519-donna.a: curve25519-donna.o
+-	ar -rc curve25519-donna.a curve25519-donna.o
+-	ranlib curve25519-donna.a
+-
+-curve25519-donna.o: curve25519-donna.c
+-	gcc -c curve25519-donna.c $(CFLAGS) $(CFLAGS_32)
+-
+-curve25519-donna-c64.a: curve25519-donna-c64.o
+-	ar -rc curve25519-donna-c64.a curve25519-donna-c64.o
+-	ranlib curve25519-donna-c64.a
+-
+-curve25519-donna-c64.o: curve25519-donna-c64.c
+-	gcc -c curve25519-donna-c64.c $(CFLAGS)
+-
+-test-donna: test-curve25519-donna
+-	./test-curve25519-donna | head -123456 | tail -1
+-
+-test-donna-c64: test-curve25519-donna-c64
+-	./test-curve25519-donna-c64 | head -123456 | tail -1
+-
+-test-curve25519-donna: test-curve25519.c curve25519-donna.a
+-	gcc -o test-curve25519-donna test-curve25519.c curve25519-donna.a $(CFLAGS) $(CFLAGS_32)
+-
+-test-curve25519-donna-c64: test-curve25519.c curve25519-donna-c64.a
+-	gcc -o test-curve25519-donna-c64 test-curve25519.c curve25519-donna-c64.a $(CFLAGS)
+-
+-speed-curve25519-donna: speed-curve25519.c curve25519-donna.a
+-	gcc -o speed-curve25519-donna speed-curve25519.c curve25519-donna.a $(CFLAGS) $(CFLAGS_32)
+-
+-speed-curve25519-donna-c64: speed-curve25519.c curve25519-donna-c64.a
+-	gcc -o speed-curve25519-donna-c64 speed-curve25519.c curve25519-donna-c64.a $(CFLAGS)
+-
+-test-sc-curve25519-donna-c64: test-sc-curve25519.c curve25519-donna-c64.a
+-	gcc -o test-sc-curve25519-donna-c64 -O test-sc-curve25519.c curve25519-donna-c64.a test-sc-curve25519.s $(CFLAGS)
+-
+-test-noncanon-donna: test-noncanon-curve25519-donna
+-	./test-noncanon-curve25519-donna
++	$(RM) $(OBJS)
+ 
+-test-noncanon-donna-c64: test-noncanon-curve25519-donna-c64
+-	./test-noncanon-curve25519-donna-c64
++fclean: clean
++	$(RM) $(SNAME_32) $(DNAMEV_32) $(DNAMEM_32) $(DNAME_32)
++	$(RM) $(SNAME_64) $(DNAMEV_64) $(DNAMEM_64) $(DNAME_64)
++
++# Install 32 bit only for now
++#install: $(SNAME_32) $(DNAMEV_32) $(SNAME_64) $(DNAMEV_64)
++install: $(SNAME_32) $(DNAMEV_32)
++	-@if [ ! -d $(DESTDIR)$(libdir) ]; then mkdir -p $(DESTDIR)$(libdir); fi
++	#-@if [ ! -d $(DESTDIR)$(lib64dir) ]; then mkdir -p $(DESTDIR)$(lib64dir); fi
++	-@if [ ! -d $(DESTDIR)$(includedir) ]; then mkdir -p $(DESTDIR)$(includedir); fi
++	cp $(SNAME_32) $(DESTDIR)$(libdir)
++	chmod 644 $(DESTDIR)$(libdir)/$(SNAME_32)
++	cp $(DNAMEV_32) $(DESTDIR)$(libdir)
++	chmod 755 $(DESTDIR)$(libdir)/$(DNAMEV_32)
++	rm -f $(DESTDIR)$(libdir)/$(DNAMEM_32)
++	rm -f $(DESTDIR)$(libdir)/$(DNAME_32)
++	ln -s $(DNAMEV_32) $(DESTDIR)$(libdir)/$(DNAMEM_32)
++	ln -s $(DNAMEM_32) $(DESTDIR)$(libdir)/$(DNAME_32)
++	#cp $(SNAME_64) $(DESTDIR)$(lib64dir)
++	#chmod 644 $(DESTDIR)$(lib64dir)/$(SNAME_64)
++	#cp $(DNAMEV_64) $(DESTDIR)$(lib64dir)
++	#chmod 755 $(DESTDIR)$(lib64dir)/$(DNAMEV_64)
++	#rm -f $(DESTDIR)$(lib64dir)/$(DNAMEM_64)
++	#rm -f $(DESTDIR)$(lib64dir)/$(DNAME_64)
++	#ln -s $(DNAMEV_64) $(DESTDIR)$(lib64dir)/$(DNAMEM_64)
++	#ln -s $(DNAMEM_64) $(DESTDIR)$(lib64dir)/$(DNAME_64)
++	$(foreach header,$(HEADERS),cp $(H_DIR)/$(header) $(DESTDIR)$(includedir); )
++	$(foreach header,$(HEADERS),chmod 644 $(DESTDIR)$(includedir)/$(header); )
+ 
+-test-noncanon-curve25519-donna: test-noncanon.c curve25519-donna.a
+-	gcc -o test-noncanon-curve25519-donna test-noncanon.c curve25519-donna.a $(CFLAGS) $(CFLAGS_32)
++rebuild: fclean all
+ 
+-test-noncanon-curve25519-donna-c64: test-noncanon.c curve25519-donna-c64.a
+-	gcc -o test-noncanon-curve25519-donna-c64 test-noncanon.c curve25519-donna-c64.a $(CFLAGS)

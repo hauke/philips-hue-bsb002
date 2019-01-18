@@ -1,0 +1,9 @@
+# Tao CPP Json package configuration
+PKG_NAME:=taocppjson
+PKG_VERSION:=1.0.0-beta.10
+PKG_RELEASE:=$(PKG_SOURCE_VERSION)
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/taocpp/json.git
+PKG_SOURCE_SUBDIR:=${PKG_NAME}-${PKG_VERSION}
+PKG_SOURCE_VERSION:=7fb9740cba3ed02ca8fffc2a6183fe996fdbc2e4
+PKG_SOURCE:=${PKG_NAME}-${PKG_SOURCE_VERSION}.tar.gz

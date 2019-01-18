@@ -1,0 +1,56 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2011 OpenWrt.org
+
+START=98
+
+USE_PROCD=1
+PROG=/usr/sbin/ntpd
+HOTPLUG_SCRIPT=/usr/sbin/ntpd-hotplug
+SYNC_NOTIFICATION_FILE=/var/ntpd/sync
+SYNC_TIMEOUT=${SYNC_TIMEOUT:-300}
+PROG_MONITOR=/usr/sbin/ntpd-monitor
+
+validate_ntp_section() {
+	uci_validate_section system timeserver "${1}" \
+		'server:list(host)' 'enabled:bool:1' 'enable_server:bool:0' 'script:string'
+}
+
+start_service() {
+	local server enabled enable_server peer script
+
+	validate_ntp_section ntp || {
+		echo "validation failed"
+		return 1
+	}
+
+	[ $enabled = 0 ] && return
+
+	[ -z "$server" ] && return
+
+	logger -p daemon.notice -t ntpd-monitor "starting"
+	procd_open_instance
+	procd_set_param env \
+	  SYNC_TIMEOUT=${SYNC_TIMEOUT} \
+	  SYNC_NOTIFICATION_FILE=${SYNC_NOTIFICATION_FILE}
+	procd_set_param command "${PROG_MONITOR}" 
+	procd_close_instance
+
+	logger -p daemon.notice -t ntpd "starting: servers=$server"
+	procd_open_instance
+	procd_set_param env SYNC_NOTIFICATION_FILE=${SYNC_NOTIFICATION_FILE}
+	procd_set_param command "$PROG" -n
+	[ "$enable_server" = "1" ] && procd_append_param command -l
+	[ -x "$HOTPLUG_SCRIPT" ] && procd_append_param command -S "$HOTPLUG_SCRIPT"
+	procd_append_param command -S /etc/ntpd/ntpd.script
+	for peer in $server; do
+		procd_append_param command -p $peer
+	done
+	procd_set_param respawn
+	procd_close_instance
+}
+
+service_triggers()
+{
+	procd_add_reload_trigger "system"
+	procd_add_validation validate_ntp_section
+}

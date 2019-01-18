@@ -1,0 +1,12 @@
+--- a/libsrp/t_math.c
++++ b/libsrp/t_math.c
+@@ -61,9 +61,6 @@ typedef void * BigIntegerModAccel;
+ # endif
+ #elif defined(TOMMATH)
+ # ifdef TOMCRYPT
+-   /* as of v0.96 */
+-#  include "ltc_tommath.h"
+-# else
+ #  include "tommath.h"
+ # endif
+ typedef mp_int * BigInteger;

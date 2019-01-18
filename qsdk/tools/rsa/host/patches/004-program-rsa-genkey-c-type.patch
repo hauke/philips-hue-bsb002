@@ -1,0 +1,39 @@
+--- a/programs/pkey/rsa_genkey.c
++++ b/programs/pkey/rsa_genkey.c
+@@ -59,6 +59,8 @@ int main( int argc, char *argv[] )
+     FILE *fpub  = NULL;
+     FILE *fpriv = NULL;
+     const char *pers = "rsa_genkey";
++    char s[ POLARSSL_MPI_RW_BUFFER_SIZE ];
++    size_t n = POLARSSL_MPI_RW_BUFFER_SIZE - 2;
+ 
+     ((void) argc);
+     ((void) argv);
+@@ -104,6 +106,27 @@ int main( int argc, char *argv[] )
+         goto exit;
+     }
+ 
++    printf( " ok\n  . Exporting the public  key(c code) in rsa_pub_c.txt...." );
++    fflush( stdout );
++
++    fclose(fpub);
++
++    if( ( fpub = fopen( "rsa_pub_c.txt", "wb+" ) ) == NULL )
++    {
++        printf( " failed\n  ! could not open rsa_pub_c.txt for writing\n\n" );
++        ret = 1;
++        goto exit;
++    }
++
++    memset( s, 0, POLARSSL_MPI_RW_BUFFER_SIZE );
++    mpi_write_string( &rsa.N, 16, s, (size_t *) &n );
++    fprintf(fpub, "#define CONFIG_RSA_N \"%s\"\n", s);
++
++    memset( s, 0, POLARSSL_MPI_RW_BUFFER_SIZE );
++    n = POLARSSL_MPI_RW_BUFFER_SIZE - 2;
++    mpi_write_string( &rsa.E, 16, s, (size_t *) &n );
++    fprintf(fpub, "#define CONFIG_RSA_E \"%s\"\n", s);
++
+     printf( " ok\n  . Exporting the private key in rsa_priv.txt..." );
+     fflush( stdout );
+ 

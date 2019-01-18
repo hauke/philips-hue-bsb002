@@ -1,0 +1,140 @@
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -78,6 +78,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA988X_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA988X_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA9887_HW_1_0_VERSION,
+@@ -97,6 +98,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA9887_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA9887_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_2_1_VERSION,
+@@ -114,6 +116,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA6174_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_2_1_VERSION,
+@@ -132,6 +135,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA6174_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_3_0_VERSION,
+@@ -150,6 +154,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA6174_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_3_2_VERSION,
+@@ -169,6 +174,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA6174_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA99X0_HW_2_0_DEV_VERSION,
+@@ -193,6 +199,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA99X0_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA9984_HW_1_0_DEV_VERSION,
+@@ -217,6 +224,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA99X0_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA9888_HW_2_0_DEV_VERSION,
+@@ -239,6 +247,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA99X0_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA9377_HW_1_0_DEV_VERSION,
+@@ -256,6 +265,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA9377_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA9377_HW_1_1_DEV_VERSION,
+@@ -273,6 +283,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA9377_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
+ 	},
+ 	{
+ 		.id = QCA4019_HW_1_0_DEV_VERSION,
+@@ -298,6 +309,7 @@ static const struct ath10k_hw_params ath
+ 			.board_size = QCA4019_BOARD_DATA_SZ,
+ 			.board_ext_size = QCA4019_BOARD_EXT_DATA_SZ,
+ 		},
++		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
+ 	},
+ };
+ 
+--- a/drivers/net/wireless/ath/ath10k/hw.c
++++ b/drivers/net/wireless/ath/ath10k/hw.c
+@@ -219,3 +219,16 @@ void ath10k_hw_fill_survey_time(struct a
+ 	survey->time = CCNT_TO_MSEC(ar, cc);
+ 	survey->time_busy = CCNT_TO_MSEC(ar, rcc);
+ }
++
++const struct ath10k_hw_rx_desc_ops qca988x_rx_desc_ops = {
++};
++
++static int ath10k_qca99x0_rx_desc_get_l3_pad_bytes(struct htt_rx_desc *rxd)
++{
++	return MS(__le32_to_cpu(rxd->msdu_end.qca99x0.info1),
++		  RX_MSDU_END_INFO1_L3_HDR_PAD);
++}
++
++const struct ath10k_hw_rx_desc_ops qca99x0_rx_desc_ops = {
++	.rx_desc_get_l3_pad_bytes = ath10k_qca99x0_rx_desc_get_l3_pad_bytes,
++};
+--- a/drivers/net/wireless/ath/ath10k/hw.h
++++ b/drivers/net/wireless/ath/ath10k/hw.h
+@@ -444,8 +444,20 @@ struct ath10k_hw_params {
+ 		size_t board_size;
+ 		size_t board_ext_size;
+ 	} fw;
++
++	const struct ath10k_hw_rx_desc_ops *hw_rx_desc_ops;
+ };
+ 
++struct htt_rx_desc;
++
++/* Defines needed for Rx descriptor abstraction */
++struct ath10k_hw_rx_desc_ops {
++	int (*rx_desc_get_l3_pad_bytes)(struct htt_rx_desc *rxd);
++};
++
++extern const struct ath10k_hw_rx_desc_ops qca988x_rx_desc_ops;
++extern const struct ath10k_hw_rx_desc_ops qca99x0_rx_desc_ops;
++
+ /* Target specific defines for MAIN firmware */
+ #define TARGET_NUM_VDEVS			8
+ #define TARGET_NUM_PEER_AST			2

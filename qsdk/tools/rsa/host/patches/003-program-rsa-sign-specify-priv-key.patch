@@ -1,0 +1,29 @@
+--- a/programs/pkey/rsa_sign.c
++++ b/programs/pkey/rsa_sign.c
+@@ -54,9 +54,9 @@ int main( int argc, char *argv[] )
+ 
+     ret = 1;
+ 
+-    if( argc != 2 )
++    if( argc != 3 )
+     {
+-        printf( "usage: rsa_sign <filename>\n" );
++        printf( "usage: rsa_sign <filename> <priv key>\n" );
+ 
+ #if defined(_WIN32)
+         printf( "\n" );
+@@ -68,11 +68,11 @@ int main( int argc, char *argv[] )
+     printf( "\n  . Reading private key from rsa_priv.txt" );
+     fflush( stdout );
+ 
+-    if( ( f = fopen( "rsa_priv.txt", "rb" ) ) == NULL )
++    if( ( f = fopen( argv[2], "rb" ) ) == NULL )
+     {
+         ret = 1;
+-        printf( " failed\n  ! Could not open rsa_priv.txt\n" \
+-                "  ! Please run rsa_genkey first\n\n" );
++        printf( " failed\n  ! Could not open %s\n" \
++                "  ! Please run rsa_genkey first\n\n", argv[2] );
+         goto exit;
+     }
+ 

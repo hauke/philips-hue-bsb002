@@ -1,0 +1,339 @@
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -964,6 +964,76 @@ static void ath10k_process_rx(struct ath
+ 	ieee80211_rx(ar->hw, skb);
+ }
+ 
++static void ath10k_process_rx_ethernet(struct ath10k *ar,
++				       struct ieee80211_rx_status *rx_status,
++				       u8 *peer_mac, struct sk_buff *skb)
++{
++	struct ieee80211_rx_status *status;
++	struct ethhdr *ehdr = (struct ethhdr *)skb->data;
++	struct ath10k_peer *peer;
++	struct ieee80211_sta *sta;
++
++	status = IEEE80211_SKB_RXCB(skb);
++	*status = *rx_status;
++
++	ath10k_dbg(ar, ATH10K_DBG_DATA,
++		   "rx skb %p len %u peer %pM %s %s %s%s%s%s%s rate_idx %u vht_nss %u freq %u band %u flag 0x%llx fcs-err %i mic-err %i amsdu-more %i\n",
++		   skb,
++		   skb->len,
++		   ehdr->h_source,
++		   is_multicast_ether_addr(ehdr->h_dest) ?  "mcast" : "ucast",
++		   (status->flag & (RX_FLAG_HT | RX_FLAG_VHT)) == 0 ?
++							"legacy" : "",
++		   status->flag & RX_FLAG_HT ? "ht" : "",
++		   status->flag & RX_FLAG_VHT ? "vht" : "",
++		   status->flag & RX_FLAG_40MHZ ? "40" : "",
++		   status->vht_flag & RX_VHT_FLAG_80MHZ ? "80" : "",
++		   status->flag & RX_FLAG_SHORT_GI ? "sgi " : "",
++		   status->rate_idx,
++		   status->vht_nss,
++		   status->freq,
++		   status->band, status->flag,
++		   !!(status->flag & RX_FLAG_FAILED_FCS_CRC),
++		   !!(status->flag & RX_FLAG_MMIC_ERROR),
++		   !!(status->flag & RX_FLAG_AMSDU_MORE));
++	ath10k_dbg_dump(ar, ATH10K_DBG_HTT_DUMP, NULL, "rx skb: ",
++			skb->data, skb->len);
++
++	/* TODO: Trace dump header and payload for ethernet frame */
++
++	if (is_zero_ether_addr(peer_mac)) {
++		ath10k_warn(ar, "invalid peer mac\n");
++		dev_kfree_skb(skb);
++		return;
++	}
++
++	spin_lock_bh(&ar->data_lock);
++
++	peer = ath10k_peer_find_by_addr(ar, peer_mac);
++	if (!peer) {
++		spin_unlock_bh(&ar->data_lock);
++		ath10k_warn(ar, "failed to find peer object, addr %pM\n",
++			    peer_mac);
++		dev_kfree_skb(skb);
++		return;
++	}
++
++	rcu_read_lock();
++
++	sta = peer->sta;
++	spin_unlock_bh(&ar->data_lock);
++
++	if (!sta) {
++		rcu_read_unlock();
++		dev_kfree_skb(skb);
++		return;
++	}
++
++	ieee80211_rx_decap_offl(ar->hw, sta, skb);
++
++	rcu_read_unlock();
++}
++
+ static int ath10k_htt_rx_nwifi_hdrlen(struct ath10k *ar,
+ 				      struct ieee80211_hdr *hdr)
+ {
+@@ -1142,7 +1212,8 @@ static void ath10k_htt_rx_h_undecap_eth(
+ 					struct sk_buff *msdu,
+ 					struct ieee80211_rx_status *status,
+ 					const u8 first_hdr[64],
+-					enum htt_rx_mpdu_encrypt_type enctype)
++					enum htt_rx_mpdu_encrypt_type enctype,
++					bool *ethernet_decap)
+ {
+ 	struct ieee80211_hdr *hdr;
+ 	struct ethhdr *eth;
+@@ -1167,6 +1238,15 @@ static void ath10k_htt_rx_h_undecap_eth(
+ 	skb_put(msdu, l3_pad_bytes);
+ 	skb_pull(msdu, l3_pad_bytes);
+ 
++	hdr = (struct ieee80211_hdr *)first_hdr;
++	if (*ethernet_decap && !ieee80211_is_frag(hdr)) {
++		if (is_multicast_ether_addr(hdr->addr1))
++			status->flag |= RX_FLAG_MCAST;
++		return;
++	}
++
++	*ethernet_decap = false;
++
+ 	/* pull decapped header and copy SA & DA */
+ 	eth = (struct ethhdr *)msdu->data;
+ 	ether_addr_copy(da, eth->h_dest);
+@@ -1178,7 +1258,6 @@ static void ath10k_htt_rx_h_undecap_eth(
+ 	       sizeof(struct rfc1042_hdr));
+ 
+ 	/* push original 802.11 header */
+-	hdr = (struct ieee80211_hdr *)first_hdr;
+ 	hdr_len = ieee80211_hdrlen(hdr->frame_control);
+ 	memcpy(skb_push(msdu, hdr_len), hdr, hdr_len);
+ 
+@@ -1222,7 +1301,7 @@ static void ath10k_htt_rx_h_undecap(stru
+ 				    struct ieee80211_rx_status *status,
+ 				    u8 first_hdr[64],
+ 				    enum htt_rx_mpdu_encrypt_type enctype,
+-				    bool is_decrypted)
++				    bool is_decrypted, bool *ethernet_decap)
+ {
+ 	struct htt_rx_desc *rxd;
+ 	enum rx_msdu_decap_format decap;
+@@ -1244,16 +1323,21 @@ static void ath10k_htt_rx_h_undecap(stru
+ 
+ 	switch (decap) {
+ 	case RX_MSDU_DECAP_RAW:
++		*ethernet_decap = false;
+ 		ath10k_htt_rx_h_undecap_raw(ar, msdu, status, enctype,
+ 					    is_decrypted);
+ 		break;
+ 	case RX_MSDU_DECAP_NATIVE_WIFI:
++		*ethernet_decap = false;
+ 		ath10k_htt_rx_h_undecap_nwifi(ar, msdu, status, first_hdr);
+ 		break;
+ 	case RX_MSDU_DECAP_ETHERNET2_DIX:
+-		ath10k_htt_rx_h_undecap_eth(ar, msdu, status, first_hdr, enctype);
++		ath10k_htt_rx_h_undecap_eth(ar, msdu, status, first_hdr,
++					    enctype, ethernet_decap);
+ 		break;
+ 	case RX_MSDU_DECAP_8023_SNAP_LLC:
++		/* TODO: Can this decap type be used in ethernet data path? */
++		*ethernet_decap = false;
+ 		ath10k_htt_rx_h_undecap_snap(ar, msdu, status, first_hdr);
+ 		break;
+ 	}
+@@ -1297,7 +1381,8 @@ static void ath10k_htt_rx_h_csum_offload
+ 
+ static void ath10k_htt_rx_h_mpdu(struct ath10k *ar,
+ 				 struct sk_buff_head *amsdu,
+-				 struct ieee80211_rx_status *status)
++				 struct ieee80211_rx_status *status,
++				 bool *ethernet_decap, u8 *peer_mac)
+ {
+ 	struct sk_buff *first;
+ 	struct sk_buff *last;
+@@ -1335,10 +1420,15 @@ static void ath10k_htt_rx_h_mpdu(struct
+ 	hdr_len = ieee80211_hdrlen(hdr->frame_control);
+ 	memcpy(first_hdr, hdr, hdr_len);
+ 
++	hdr = (void *)first_hdr;
++	/* Transmitter mac address will be used to find the station entry which
++	 * is passed to mac80211 in rx API for ethernet format frame.
++	 */
++	ether_addr_copy(peer_mac, hdr->addr2);
++
+ 	/* Each A-MSDU subframe will use the original header as the base and be
+ 	 * reported as a separate MSDU so strip the A-MSDU bit from QoS Ctl.
+ 	 */
+-	hdr = (void *)first_hdr;
+ 	qos = ieee80211_get_qos_ctl(hdr);
+ 	qos[0] &= ~IEEE80211_QOS_CTL_A_MSDU_PRESENT;
+ 
+@@ -1394,7 +1484,10 @@ static void ath10k_htt_rx_h_mpdu(struct
+ 	skb_queue_walk(amsdu, msdu) {
+ 		ath10k_htt_rx_h_csum_offload(msdu);
+ 		ath10k_htt_rx_h_undecap(ar, msdu, status, first_hdr, enctype,
+-					is_decrypted);
++					is_decrypted, ethernet_decap);
++
++		if (*ethernet_decap)
++			continue;
+ 
+ 		/* Undecapping involves copying the original 802.11 header back
+ 		 * to sk_buff. If frame is protected and hardware has decrypted
+@@ -1412,11 +1505,17 @@ static void ath10k_htt_rx_h_mpdu(struct
+ 
+ static void ath10k_htt_rx_h_deliver(struct ath10k *ar,
+ 				    struct sk_buff_head *amsdu,
+-				    struct ieee80211_rx_status *status)
++				    struct ieee80211_rx_status *status,
++				    bool ethernet_decap, u8 *peer_mac)
+ {
+ 	struct sk_buff *msdu;
+ 
+ 	while ((msdu = __skb_dequeue(amsdu))) {
++		if (ethernet_decap) {
++			ath10k_process_rx_ethernet(ar, status, peer_mac, msdu);
++			continue;
++		}
++
+ 		/* Setup per-MSDU flags */
+ 		if (skb_queue_empty(amsdu))
+ 			status->flag &= ~RX_FLAG_AMSDU_MORE;
+@@ -1539,6 +1638,8 @@ static int ath10k_htt_rx_handle_amsdu(st
+ 	struct ath10k *ar = htt->ar;
+ 	struct ieee80211_rx_status *rx_status = &htt->rx_status;
+ 	struct sk_buff_head amsdu;
++	bool ethernet_decap = false;
++	u8 peer_mac[ETH_ALEN];
+ 	int ret;
+ 
+ 	__skb_queue_head_init(&amsdu);
+@@ -1561,12 +1662,15 @@ static int ath10k_htt_rx_handle_amsdu(st
+ 		return ret;
+ 	}
+ 
++	eth_zero_addr(peer_mac);
+ 	ath10k_pktlog_rx(ar, &amsdu);
+ 	ath10k_htt_rx_h_ppdu(ar, &amsdu, rx_status, 0xffff);
+ 	ath10k_htt_rx_h_unchain(ar, &amsdu, ret > 0);
+ 	ath10k_htt_rx_h_filter(ar, &amsdu, rx_status);
+-	ath10k_htt_rx_h_mpdu(ar, &amsdu, rx_status);
+-	ath10k_htt_rx_h_deliver(ar, &amsdu, rx_status);
++	ath10k_htt_rx_h_mpdu(ar, &amsdu, rx_status, &ethernet_decap,
++			     peer_mac);
++	ath10k_htt_rx_h_deliver(ar, &amsdu, rx_status, ethernet_decap,
++				peer_mac);
+ 
+ 	return 0;
+ }
+@@ -1788,8 +1892,10 @@ static void ath10k_htt_rx_reorder_rel(st
+ 				      u8 tid, u16 seq_start, u16 seq_end)
+ {
+ 	struct ath10k *ar = htt->ar;
+-	static struct ieee80211_rx_status rx_status;
++	struct ieee80211_rx_status *rx_status = &htt->rx_status;
+ 	struct sk_buff_head *mpdus;
++	u8 peer_mac[ETH_ALEN];
++	bool ethernet_decap = false;
+ 	int num_mpdus;
+ 	int i;
+ 
+@@ -1805,13 +1911,20 @@ static void ath10k_htt_rx_reorder_rel(st
+ 	num_mpdus = ath10k_htt_rx_reorder_get_mpdus(htt, peerid, tid, seq_start,
+ 						    seq_end, mpdus);
+ 
+-	rx_status.flag |= RX_FLAG_DUP_VALIDATED;
++	rx_status->flag |= RX_FLAG_DUP_VALIDATED;
++
++	if (test_bit(ATH10K_FLAG_ETHERNET_MODE_ENABLED, &ar->dev_flags))
++		ethernet_decap = true;
++
++	eth_zero_addr(peer_mac);
+ 
+ 	for (i = 0; i < num_mpdus; i++) {
+-		ath10k_htt_rx_h_ppdu(ar, &mpdus[i], &rx_status, 0xffff);
+-		ath10k_htt_rx_h_filter(ar, &mpdus[i], &rx_status);
+-		ath10k_htt_rx_h_mpdu(ar, &mpdus[i], &rx_status);
+-		ath10k_htt_rx_h_deliver(ar, &mpdus[i], &rx_status);
++		ath10k_htt_rx_h_ppdu(ar, &mpdus[i], rx_status, 0xffff);
++		ath10k_htt_rx_h_filter(ar, &mpdus[i], rx_status);
++		ath10k_htt_rx_h_mpdu(ar, &mpdus[i], rx_status,
++				     &ethernet_decap, peer_mac);
++		ath10k_htt_rx_h_deliver(ar, &mpdus[i], rx_status,
++					ethernet_decap, peer_mac);
+ 	}
+ 
+ 	kfree(mpdus);
+@@ -1823,7 +1936,9 @@ static int ath10k_htt_rx_proc_mpdu(struc
+ 	struct sk_buff_head amsdu;
+ 	struct sk_buff *msdu;
+ 	struct htt_rx_desc *rxd;
+-	static struct ieee80211_rx_status rx_status;
++	struct ieee80211_rx_status *rx_status = &htt->rx_status;
++	u8 peer_mac[ETH_ALEN];
++	bool ethernet_decap = false;
+ 	int seq_num;
+ 	int ret;
+ 
+@@ -1869,16 +1984,23 @@ static int ath10k_htt_rx_proc_mpdu(struc
+ 		return 0;
+ 	}
+ 
+-	rx_status.flag |= RX_FLAG_DUP_VALIDATED;
++	rx_status->flag |= RX_FLAG_DUP_VALIDATED;
++
++	if (test_bit(ATH10K_FLAG_ETHERNET_MODE_ENABLED, &ar->dev_flags))
++		ethernet_decap = true;
++
++	eth_zero_addr(peer_mac);
+ 
+ 	/* Process and pass amsdu list to mac80211 when failed to store the
+ 	 * frames in reorder buffer because these may be non-aggregated frames.
+ 	 */
+ 
+-	ath10k_htt_rx_h_ppdu(ar, &amsdu, &rx_status, 0xffff);
+-	ath10k_htt_rx_h_filter(ar, &amsdu, &rx_status);
+-	ath10k_htt_rx_h_mpdu(ar, &amsdu, &rx_status);
+-	ath10k_htt_rx_h_deliver(ar, &amsdu, &rx_status);
++	ath10k_htt_rx_h_ppdu(ar, &amsdu, rx_status, 0xffff);
++	ath10k_htt_rx_h_filter(ar, &amsdu, rx_status);
++	ath10k_htt_rx_h_mpdu(ar, &amsdu, rx_status,
++			     &ethernet_decap, peer_mac);
++	ath10k_htt_rx_h_deliver(ar, &amsdu, rx_status,
++				ethernet_decap, peer_mac);
+ 
+ 	return 0;
+ }
+@@ -2337,6 +2459,8 @@ static void ath10k_htt_rx_in_ord_ind(str
+ 	u8 tid;
+ 	bool offload;
+ 	bool frag;
++	u8 peer_mac[ETH_ALEN];
++	bool ethernet_decap = false;
+ 	int ret;
+ 
+ 	lockdep_assert_held(&htt->rx_ring.lock);
+@@ -2381,6 +2505,8 @@ static void ath10k_htt_rx_in_ord_ind(str
+ 	if (offload)
+ 		ath10k_htt_rx_h_rx_offload(ar, &list);
+ 
++	eth_zero_addr(peer_mac);
++
+ 	while (!skb_queue_empty(&list)) {
+ 		__skb_queue_head_init(&amsdu);
+ 		ret = ath10k_htt_rx_extract_amsdu(&list, &amsdu);
+@@ -2395,8 +2521,10 @@ static void ath10k_htt_rx_in_ord_ind(str
+ 			ath10k_pktlog_rx(ar, &amsdu);
+ 			ath10k_htt_rx_h_ppdu(ar, &amsdu, status, vdev_id);
+ 			ath10k_htt_rx_h_filter(ar, &amsdu, status);
+-			ath10k_htt_rx_h_mpdu(ar, &amsdu, status);
+-			ath10k_htt_rx_h_deliver(ar, &amsdu, status);
++			ath10k_htt_rx_h_mpdu(ar, &amsdu, status,
++					     &ethernet_decap, peer_mac);
++			ath10k_htt_rx_h_deliver(ar, &amsdu, status,
++						ethernet_decap, peer_mac);
+ 			break;
+ 		case -EAGAIN:
+ 			/* fall through */

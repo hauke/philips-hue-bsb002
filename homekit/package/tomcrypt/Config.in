@@ -1,0 +1,12 @@
+choice
+	prompt "Math library backend to use"
+	default TOMCRYPT_TOMMATH
+	depends on PACKAGE_tomcrypt
+
+config TOMCRYPT_TOMMATH
+	bool "tommath"
+
+config TOMCRYPT_TOMSFASTMATH
+        bool "tomsfastmath"
+
+endchoice

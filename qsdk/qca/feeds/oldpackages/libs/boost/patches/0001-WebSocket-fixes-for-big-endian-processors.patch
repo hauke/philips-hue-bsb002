@@ -1,0 +1,172 @@
+From 97812ac739838d31bfce11057db4a195a559b11e Mon Sep 17 00:00:00 2001
+From: Pieter Smith <pieter.smith@philips.com>
+Date: Thu, 15 Feb 2018 15:23:43 +0100
+Subject: [PATCH] WebSocket fixes for big endian processors
+
+---
+ boost/beast/websocket/detail/frame.hpp |   5 +-
+ boost/beast/websocket/detail/mask.hpp  | 113 ++++-----------------------------
+ 2 files changed, 16 insertions(+), 102 deletions(-)
+
+diff --git a/boost/beast/websocket/detail/frame.hpp b/boost/beast/websocket/detail/frame.hpp
+index 95080ae..eb1fc34 100644
+--- a/boost/beast/websocket/detail/frame.hpp
++++ b/boost/beast/websocket/detail/frame.hpp
+@@ -217,7 +217,8 @@ write(DynamicBuffer& db, frame_header const& fh)
+     }
+     if(fh.mask)
+     {
+-        native_to_little_uint32(fh.key, &b[n]);
++        ::new(&b[n]) native_uint32_buf_t{
++            (std::uint32_t)fh.key};
+         n += 4;
+     }
+     db.commit(buffer_copy(
+@@ -269,7 +270,7 @@ read_close(close_reason& cr,
+     {
+         std::uint8_t b[2];
+         buffer_copy(buffer(b), cb);
+-        cr.code = big_uint16_to_native(&b[0]);
++        cr.code = (::new(&b[0]) big_uint16_buf_t)->value();
+         cb.consume(2);
+         n -= 2;
+         if(! is_valid_close_code(cr.code))
+diff --git a/boost/beast/websocket/detail/mask.hpp b/boost/beast/websocket/detail/mask.hpp
+index 92ea0a4..24cc56f 100644
+--- a/boost/beast/websocket/detail/mask.hpp
++++ b/boost/beast/websocket/detail/mask.hpp
+@@ -115,118 +115,31 @@ ror(T t, unsigned n = 1)
+         static_cast<typename std::make_unsigned<T>::type>(t) >> n));
+ }
+ 
+-// 32-bit optimized
++// simple implementation
+ //
+-template<class = void>
++template<class = void, class T>
+ void
+ mask_inplace_fast(
+     boost::asio::mutable_buffer const& b,
+-        std::uint32_t& key)
++        T& key)
+ {
+     auto n = b.size();
+     auto p = reinterpret_cast<std::uint8_t*>(b.data());
+-    if(n >= sizeof(key))
+-    {
+-        // Bring p to 4-byte alignment
+-        auto const i = reinterpret_cast<
+-            std::uintptr_t>(p) & (sizeof(key)-1);
+-        switch(i)
+-        {
+-        case 1: p[2] ^= static_cast<std::uint8_t>(key >> 16); BOOST_BEAST_FALLTHROUGH;
+-        case 2: p[1] ^= static_cast<std::uint8_t>(key >> 8);  BOOST_BEAST_FALLTHROUGH;
+-        case 3: p[0] ^= static_cast<std::uint8_t>(key);
+-        {
+-            auto const d = static_cast<unsigned>(sizeof(key) - i);
+-            key = ror(key, 8*d);
+-            n -= d;
+-            p += d;
+-            BOOST_BEAST_FALLTHROUGH;
+-        }
+-        default:
+-            break;
+-        }
+-    }
+-
+-    // Mask 4 bytes at a time
+-    for(auto i = n / sizeof(key); i; --i)
+-    {
+-        *reinterpret_cast<
+-            std::uint32_t*>(p) ^= key;
+-        p += sizeof(key);
+-    }
+-
+-    // Leftovers
+-    n &= sizeof(key)-1;
+-    switch(n)
+-    {
+-    case 3: p[2] ^= static_cast<std::uint8_t>(key >> 16); BOOST_BEAST_FALLTHROUGH;
+-    case 2: p[1] ^= static_cast<std::uint8_t>(key >> 8);  BOOST_BEAST_FALLTHROUGH;
+-    case 1: p[0] ^= static_cast<std::uint8_t>(key);
+-        key = ror(key, static_cast<unsigned>(8*n));
+-        BOOST_BEAST_FALLTHROUGH;
+-    default:
+-        break;
+-    }
+-}
+-
+-// 64-bit optimized
+-//
+-template<class = void>
+-void
+-mask_inplace_fast(
+-    boost::asio::mutable_buffer const& b,
+-        std::uint64_t& key)
+-{
+-    auto n = b.size();
+-    auto p = reinterpret_cast<std::uint8_t*>(b.data());
+-    if(n >= sizeof(key))
+-    {
+-        // Bring p to 8-byte alignment
+-        auto const i = reinterpret_cast<
+-            std::uintptr_t>(p) & (sizeof(key)-1);
+-        switch(i)
+-        {
+-        case 1: p[6] ^= static_cast<std::uint8_t>(key >> 48);
+-        case 2: p[5] ^= static_cast<std::uint8_t>(key >> 40);
+-        case 3: p[4] ^= static_cast<std::uint8_t>(key >> 32);
+-        case 4: p[3] ^= static_cast<std::uint8_t>(key >> 24);
+-        case 5: p[2] ^= static_cast<std::uint8_t>(key >> 16);
+-        case 6: p[1] ^= static_cast<std::uint8_t>(key >> 8);
+-        case 7: p[0] ^= static_cast<std::uint8_t>(key);
+-        {
+-            auto const d = static_cast<
+-                unsigned>(sizeof(key) - i);
+-            key = ror(key, 8*d);
+-            n -= d;
+-            p += d;
+-        }
+-        default:
+-            break;
+-        }
+-    }
++    auto pkey = reinterpret_cast<std::uint8_t*>(&key);
+ 
+-    // Mask 8 bytes at a time
+-    for(auto i = n / sizeof(key); i; --i)
++    size_t ikey = 0;
++    for (size_t i = 0; i < n; i++)
+     {
+-        *reinterpret_cast<
+-            std::uint64_t*>(p) ^= key;
+-        p += sizeof(key);
++        p[i] ^= pkey[ikey++];
++        ikey %= sizeof(key);
+     }
+ 
+-    // Leftovers
+-    n &= sizeof(key)-1;
+-    switch(n)
++    auto oldkey = key;
++    auto poldkey = reinterpret_cast<std::uint8_t*>(&oldkey);
++    for (size_t i = 0; i < sizeof(key); i++)
+     {
+-    case 7: p[6] ^= static_cast<std::uint8_t>(key >> 48);
+-    case 6: p[5] ^= static_cast<std::uint8_t>(key >> 40);
+-    case 5: p[4] ^= static_cast<std::uint8_t>(key >> 32);
+-    case 4: p[3] ^= static_cast<std::uint8_t>(key >> 24);
+-    case 3: p[2] ^= static_cast<std::uint8_t>(key >> 16);
+-    case 2: p[1] ^= static_cast<std::uint8_t>(key >> 8);
+-    case 1: p[0] ^= static_cast<std::uint8_t>(key);
+-        key = ror(key, static_cast<unsigned>(8*n));
+-    default:
+-        break;
++        pkey[i] = poldkey[ikey++];
++        ikey %= sizeof(key);
+     }
+ }
+ 
+-- 
+2.7.4
+

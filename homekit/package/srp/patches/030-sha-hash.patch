@@ -1,0 +1,101 @@
+--- a/libsrp/srp.h
++++ b/libsrp/srp.h
+@@ -321,8 +321,8 @@ _TYPE( SRP_RESULT ) SRP_respond P((SRP *
+ 
+ /* RFC2945-style SRP authentication */
+ 
+-#define RFC2945_KEY_LEN 40	/* length of session key (bytes) */
+-#define RFC2945_RESP_LEN 20	/* length of proof hashes (bytes) */
++#define RFC2945_KEY_LEN SHA_DIGESTSIZE//40	/* length of session key (bytes) */
++#define RFC2945_RESP_LEN SHA_DIGESTSIZE//20	/* length of proof hashes (bytes) */
+ 
+ /*
+  * RFC2945-style SRP authentication methods.  Use these like:
+--- a/libsrp/srp6_server.c
++++ b/libsrp/srp6_server.c
+@@ -330,11 +330,19 @@ srp6_server_key(SRP * srp, cstr ** resul
+   BigIntegerClearFree(t1);
+   BigIntegerClearFree(t3);
+ 
+-  /* convert srp->key into session key, update hashes */
++/* convert srp->key into session key, update hashes */
++  SHA1_CTX sctx;
+   BigIntegerToCstr(srp->key, s);
+-  t_mgf1(SERVER_CTXP(srp)->k, RFC2945_KEY_LEN, s->data, s->length); /* Interleaved hash */
++  SHA1Init(&sctx);
++  SHA1Update(&sctx, s->data, s->length);
++  SHA1Final(SERVER_CTXP(srp)->k, &sctx);
+   cstr_clear_free(s);
+ 
++  /* convert srp->key into session key, update hashes */
++//  BigIntegerToCstr(srp->key, s);
++//  t_mgf1(SERVER_CTXP(srp)->k, RFC2945_KEY_LEN, s->data, s->length); /* Interleaved hash */
++//  cstr_clear_free(s);
++
+   /* ckhash: (H(N) xor H(g)) | H(U) | s | A | B | K */
+   SHA1Update(&SERVER_CTXP(srp)->ckhash, SERVER_CTXP(srp)->k, RFC2945_KEY_LEN);
+   /* ckhash: (H(N) xor H(g)) | H(U) | s | A | B | K | ex_data */
+--- a/libsrp/t_math.c
++++ b/libsrp/t_math.c
+@@ -60,9 +60,12 @@ typedef void * BigIntegerModAccel;
+ #  define GMP_IMPEXP 1
+ # endif
+ #elif defined(TOMMATH)
+-# ifdef TOMCRYPT
++//# ifdef TOMCRYPT
++   /* as of v0.96 */
++//#  include "ltc_tommath.h"
++//# else
+ #  include "tommath.h"
+-# endif
++//# endif
+ typedef mp_int * BigInteger;
+ typedef void * BigIntegerCtx;
+ typedef void * BigIntegerModAccel;
+@@ -346,6 +349,7 @@ BigIntegerCmpInt(c1, c2)
+      BigInteger c1;
+      unsigned int c2;
+ {
++  int ret = 0;
+ #ifdef OPENSSL
+   if(c1->top > 1)
+     return 1;
+@@ -368,7 +372,8 @@ BigIntegerCmpInt(c1, c2)
+   freeBignum(t);
+   return rv;
+ #elif defined(GNU_MP)
+-  return mpz_cmp_ui(c1, c2);
++  ret = mpz_cmp_ui(c1, c2);
++  return ret;
+ #elif defined(TOMMATH)
+   return mp_cmp_d(c1, c2);
+ #elif defined(GCRYPT)
+--- a/libsrp/t_sha.h
++++ b/libsrp/t_sha.h
+@@ -9,7 +9,7 @@
+ #endif
+ #endif
+ 
+-#define SHA_DIGESTSIZE 20
++#define SHA_DIGESTSIZE 64//20
+ 
+ #ifdef OPENSSL
+ #define OPENSSL_SHA 1
+@@ -44,9 +44,14 @@ typedef SHA_CTX SHA1_CTX;
+ /* mycrypt.h already included above */
+ 
+ typedef hash_state SHA1_CTX;
+-#define SHA1Init sha1_init
+-#define SHA1Update sha1_process
+-#define SHA1Final(D,C) sha1_done(C,D)
++//#define SHA1Init sha1_init
++//#define SHA1Update sha1_process
++//#define SHA1Final(D,C) sha1_done(C,D)
++
++#define SHA1Init sha512_init
++#define SHA1Update sha512_process
++#define SHA1Final(D,C) sha512_done(C,D)
++
+ #elif defined(GCRYPT_SHA)
+ #include "gcrypt.h"
+ typedef gcry_md_hd_t SHA1_CTX;

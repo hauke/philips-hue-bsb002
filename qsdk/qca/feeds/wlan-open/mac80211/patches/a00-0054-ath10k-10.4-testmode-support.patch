@@ -1,0 +1,355 @@
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -184,6 +184,7 @@ static const struct ath10k_hw_params ath
+ 		.rx_chain_mask = 0xf,
+ 		.max_spatial_stream = 4,
+ 		.cal_data_len = 12064,
++		.utf_codeswap_support = true,
+ 		.fw = {
+ 			.dir = QCA99X0_HW_2_0_FW_DIR,
+ 			.board = QCA99X0_HW_2_0_BOARD_DATA_FILE,
+@@ -207,6 +208,7 @@ static const struct ath10k_hw_params ath
+ 		.rx_chain_mask = 0xf,
+ 		.max_spatial_stream = 4,
+ 		.cal_data_len = 12064,
++		.utf_codeswap_support = true,
+ 		.fw = {
+ 			.dir = QCA9984_HW_1_0_FW_DIR,
+ 			.board = QCA9984_HW_1_0_BOARD_DATA_FILE,
+@@ -265,6 +267,7 @@ static const struct ath10k_hw_params ath
+ 		.rx_chain_mask = 0x3,
+ 		.max_spatial_stream = 2,
+ 		.cal_data_len = 12064,
++		.utf_codeswap_support = true,
+ 		.fw = {
+ 			.dir = QCA4019_HW_1_0_FW_DIR,
+ 			.board = QCA4019_HW_1_0_BOARD_DATA_FILE,
+@@ -720,7 +723,7 @@ static int ath10k_download_and_run_otp(s
+ 	return 0;
+ }
+ 
+-static int ath10k_download_fw(struct ath10k *ar)
++static int ath10k_download_fw(struct ath10k *ar, enum ath10k_firmware_mode mode)
+ {
+ 	u32 address, data_len;
+ 	const void *data;
+@@ -731,7 +734,17 @@ static int ath10k_download_fw(struct ath
+ 	data = ar->running_fw->fw_file.firmware_data;
+ 	data_len = ar->running_fw->fw_file.firmware_len;
+ 
+-	ret = ath10k_swap_code_seg_configure(ar);
++	if (mode == ATH10K_FIRMWARE_MODE_NORMAL)
++		ret = ath10k_swap_code_seg_configure(ar,
++					ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW);
++	else if (mode == ATH10K_FIRMWARE_MODE_UTF)
++		ret = ath10k_swap_code_seg_configure(ar,
++					ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF);
++	else {
++		ath10k_err(ar, "unknown firmware mode: %d\n", mode);
++		return -EINVAL;
++	}
++
+ 	if (ret) {
+ 		ath10k_err(ar, "failed to configure fw code swap: %d\n",
+ 			   ret);
+@@ -1746,7 +1759,7 @@ int ath10k_core_start(struct ath10k *ar,
+ 		}
+ 	}
+ 
+-	status = ath10k_download_fw(ar);
++	status = ath10k_download_fw(ar, mode);
+ 	if (status)
+ 		goto err;
+ 
+@@ -1834,7 +1847,8 @@ int ath10k_core_start(struct ath10k *ar,
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "firmware %s booted\n",
+ 		   ar->hw->wiphy->fw_version);
+ 
+-	if (test_bit(WMI_SERVICE_EXT_RES_CFG_SUPPORT, ar->wmi.svc_map)) {
++	if (test_bit(WMI_SERVICE_EXT_RES_CFG_SUPPORT, ar->wmi.svc_map) &&
++	    (mode == ATH10K_FIRMWARE_MODE_NORMAL)) {
+ 		val = 0;
+ 		if (ath10k_peer_stats_enabled(ar))
+ 			val = WMI_10_4_PEER_STATS;
+@@ -2033,7 +2047,7 @@ static int ath10k_core_probe_fw(struct a
+ 		goto err_free_firmware_files;
+ 	}
+ 
+-	ret = ath10k_swap_code_seg_init(ar);
++	ret = ath10k_swap_code_seg_init(ar, ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW);
+ 	if (ret) {
+ 		ath10k_err(ar, "failed to initialize code swap segment: %d\n",
+ 			   ret);
+--- a/drivers/net/wireless/ath/ath10k/core.h
++++ b/drivers/net/wireless/ath/ath10k/core.h
+@@ -759,6 +759,11 @@ struct ath10k {
+ 		u32 max_spatial_stream;
+ 		u32 cal_data_len;
+ 
++		/* QCA99X0 chip uses utf codeswap binary in addition
++		 * to utf.bin in testmode
++		 */
++		bool utf_codeswap_support;
++
+ 		struct ath10k_hw_params_fw {
+ 			const char *dir;
+ 			const char *board;
+@@ -925,6 +930,9 @@ struct ath10k {
+ 	struct {
+ 		/* protected by conf_mutex */
+ 		struct ath10k_fw_components utf_mode_fw;
++		const struct firmware *utf_codeswap;
++
++		struct ath10k_swap_code_seg_info *utf_code_swap_seg_info;
+ 
+ 		/* protected by data_lock */
+ 		bool utf_monitor;
+--- a/drivers/net/wireless/ath/ath10k/hw.h
++++ b/drivers/net/wireless/ath/ath10k/hw.h
+@@ -130,6 +130,7 @@ enum qca9377_chip_id_rev {
+ 
+ #define ATH10K_FW_UTF_FILE		"utf.bin"
+ #define ATH10K_FW_UTF_API2_FILE		"utf-2.bin"
++#define ATH10K_FW_UTF_CODESWAP_FILE	"utf.codeswap.bin"
+ 
+ /* includes also the null byte */
+ #define ATH10K_FIRMWARE_MAGIC               "QCA-ATH10K"
+--- a/drivers/net/wireless/ath/ath10k/swap.c
++++ b/drivers/net/wireless/ath/ath10k/swap.c
+@@ -80,7 +80,7 @@ static int ath10k_swap_code_seg_fill(str
+ 	return 0;
+ }
+ 
+-static void
++void
+ ath10k_swap_code_seg_free(struct ath10k *ar,
+ 			  struct ath10k_swap_code_seg_info *seg_info)
+ {
+@@ -134,17 +134,35 @@ ath10k_swap_code_seg_alloc(struct ath10k
+ 	return seg_info;
+ }
+ 
+-int ath10k_swap_code_seg_configure(struct ath10k *ar)
++int ath10k_swap_code_seg_configure(struct ath10k *ar,
++				   enum ath10k_swap_code_seg_bin_type type)
+ {
+ 	int ret;
+ 	struct ath10k_swap_code_seg_info *seg_info = NULL;
+ 
+-	if (!ar->swap.firmware_swap_code_seg_info)
++	switch (type) {
++	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW:
++		if (!ar->swap.firmware_swap_code_seg_info)
++			return 0;
++
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "boot found firmware code swap binary\n");
++
++		seg_info = ar->swap.firmware_swap_code_seg_info;
++		break;
++	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF:
++		if (!ar->testmode.utf_code_swap_seg_info)
++			return 0;
++
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "boot: found code swap binary for UTF firmware\n");
++		seg_info = ar->testmode.utf_code_swap_seg_info;
++		break;
++	default:
++		ath10k_warn(ar, "ignoring unknown code swap binary type %d\n",
++			    type);
+ 		return 0;
+-
+-	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot found firmware code swap binary\n");
+-
+-	seg_info = ar->swap.firmware_swap_code_seg_info;
++	}
+ 
+ 	ret = ath10k_bmi_write_memory(ar, seg_info->target_addr,
+ 				      &seg_info->seg_hw_info,
+@@ -171,18 +189,33 @@ void ath10k_swap_code_seg_release(struct
+ 	ar->swap.firmware_swap_code_seg_info = NULL;
+ }
+ 
+-int ath10k_swap_code_seg_init(struct ath10k *ar)
++int ath10k_swap_code_seg_init(struct ath10k *ar,
++			      enum ath10k_swap_code_seg_bin_type type)
+ {
+ 	int ret;
+ 	struct ath10k_swap_code_seg_info *seg_info;
+ 	const void *codeswap_data;
+ 	size_t codeswap_len;
+ 
+-	codeswap_data = ar->normal_mode_fw.fw_file.codeswap_data;
+-	codeswap_len = ar->normal_mode_fw.fw_file.codeswap_len;
+-
+-	if (!codeswap_len || !codeswap_data)
+-		return 0;
++	switch (type) {
++	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW:
++		codeswap_data = ar->normal_mode_fw.fw_file.codeswap_data;
++		codeswap_len = ar->normal_mode_fw.fw_file.codeswap_len;
++
++		if (!codeswap_len || !codeswap_data)
++			return 0;
++		break;
++	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF:
++		if (!ar->testmode.utf_codeswap)
++			return 0;
++		codeswap_data = ar->testmode.utf_mode_fw.fw_file.codeswap_data;
++		codeswap_len = ar->testmode.utf_mode_fw.fw_file.codeswap_len;
++		break;
++	default:
++		ath10k_err(ar, "unknown code swap binary type specified %d\n",
++			   type);
++		return -EINVAL;
++	}
+ 
+ 	seg_info = ath10k_swap_code_seg_alloc(ar, codeswap_len);
+ 	if (!seg_info) {
+@@ -200,7 +233,10 @@ int ath10k_swap_code_seg_init(struct ath
+ 		return ret;
+ 	}
+ 
+-	ar->swap.firmware_swap_code_seg_info = seg_info;
++	if (type == ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW)
++		ar->swap.firmware_swap_code_seg_info = seg_info;
++	if (type == ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF)
++		ar->testmode.utf_code_swap_seg_info = seg_info;
+ 
+ 	return 0;
+ }
+--- a/drivers/net/wireless/ath/ath10k/swap.h
++++ b/drivers/net/wireless/ath/ath10k/swap.h
+@@ -39,6 +39,12 @@ union ath10k_swap_code_seg_item {
+ 	struct ath10k_swap_code_seg_tail tail;
+ } __packed;
+ 
++enum ath10k_swap_code_seg_bin_type {
++	ATH10K_SWAP_CODE_SEG_BIN_TYPE_OTP,
++	ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW,
++	ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF,
++};
++
+ struct ath10k_swap_code_seg_hw_info {
+ 	/* Swap binary image size */
+ 	__le32 swap_size;
+@@ -58,8 +64,12 @@ struct ath10k_swap_code_seg_info {
+ 	dma_addr_t paddr[ATH10K_SWAP_CODE_SEG_NUM_SUPPORTED];
+ };
+ 
+-int ath10k_swap_code_seg_configure(struct ath10k *ar);
++int ath10k_swap_code_seg_configure(struct ath10k *ar,
++				   enum ath10k_swap_code_seg_bin_type type);
+ void ath10k_swap_code_seg_release(struct ath10k *ar);
+-int ath10k_swap_code_seg_init(struct ath10k *ar);
+-
++int ath10k_swap_code_seg_init(struct ath10k *ar,
++			      enum ath10k_swap_code_seg_bin_type type);
++void
++ath10k_swap_code_seg_free(struct ath10k *ar,
++			  struct ath10k_swap_code_seg_info *seg_info);
+ #endif
+--- a/drivers/net/wireless/ath/ath10k/testmode.c
++++ b/drivers/net/wireless/ath/ath10k/testmode.c
+@@ -23,6 +23,7 @@
+ #include "wmi.h"
+ #include "hif.h"
+ #include "hw.h"
++#include "swap.h"
+ 
+ #include "testmode_i.h"
+ 
+@@ -208,6 +209,56 @@ out:
+ 	return 0;
+ }
+ 
++static void ath10k_tm_free_utf_codeswap(struct ath10k *ar)
++{
++	if (ar->testmode.utf_code_swap_seg_info) {
++		ath10k_swap_code_seg_free(ar,
++					  ar->testmode.utf_code_swap_seg_info);
++		ar->testmode.utf_code_swap_seg_info = NULL;
++	}
++
++	release_firmware(ar->testmode.utf_codeswap);
++	ar->testmode.utf_codeswap = NULL;
++
++	ar->testmode.utf_mode_fw.fw_file.codeswap_data = NULL;
++	ar->testmode.utf_mode_fw.fw_file.codeswap_len = 0;
++}
++
++static int ath10k_tm_init_utf_codeswap(struct ath10k *ar)
++{
++	char filename[100];
++	int ret;
++
++	snprintf(filename, sizeof(filename), "%s/%s",
++		 ar->hw_params.fw.dir, ATH10K_FW_UTF_CODESWAP_FILE);
++
++	/* load utf codeswap firmware image */
++	ret = request_firmware(&ar->testmode.utf_codeswap, filename, ar->dev);
++	if (ret) {
++		ath10k_warn(ar,
++			    "failed to get utf codeswap fw'%s': %d\n",
++			    filename, ret);
++		return ret;
++	}
++
++	ar->testmode.utf_mode_fw.fw_file.codeswap_data = ar->testmode.utf_codeswap->data;
++	ar->testmode.utf_mode_fw.fw_file.codeswap_len = ar->testmode.utf_codeswap->size;
++
++	ret = ath10k_swap_code_seg_init(ar, ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF);
++	if (ret) {
++		ath10k_warn(ar,
++			    "failed to initialize utf code swap segment : %d\n",
++			    ret);
++		goto err_release_codeswap_fw;
++	}
++
++	return 0;
++
++err_release_codeswap_fw:
++	ath10k_tm_free_utf_codeswap(ar);
++	return ret;
++}
++
+ static int ath10k_tm_cmd_utf_start(struct ath10k *ar, struct nlattr *tb[])
+ {
+ 	const char *ver;
+@@ -240,6 +291,16 @@ static int ath10k_tm_cmd_utf_start(struc
+ 		goto err;
+ 	}
+ 
++	if (ar->hw_params.utf_codeswap_support) {
++		ret = ath10k_tm_init_utf_codeswap(ar);
++		if (ret) {
++			ath10k_warn(ar,
++				    "failed to init codeswap for utf mode: %d\n",
++				    ret);
++			goto err_release_utf_mode_fw;
++		}
++	}
++
+ 	spin_lock_bh(&ar->data_lock);
+ 	ar->testmode.utf_monitor = true;
+ 	spin_unlock_bh(&ar->data_lock);
+@@ -279,6 +340,8 @@ err_power_down:
+ 	ath10k_hif_power_down(ar);
+ 
+ err_release_utf_mode_fw:
++	if (ar->hw_params.utf_codeswap_support)
++		ath10k_tm_free_utf_codeswap(ar);
+ 	release_firmware(ar->testmode.utf_mode_fw.fw_file.firmware);
+ 	ar->testmode.utf_mode_fw.fw_file.firmware = NULL;
+ 
+@@ -304,6 +367,9 @@ static void __ath10k_tm_cmd_utf_stop(str
+ 	release_firmware(ar->testmode.utf_mode_fw.fw_file.firmware);
+ 	ar->testmode.utf_mode_fw.fw_file.firmware = NULL;
+ 
++	if (ar->hw_params.utf_codeswap_support)
++		ath10k_tm_free_utf_codeswap(ar);
++
+ 	ar->state = ATH10K_STATE_OFF;
+ }
+ 

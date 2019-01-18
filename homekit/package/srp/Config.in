@@ -1,0 +1,19 @@
+choice
+	prompt "Math/Crypto backend library"
+	default SRP_TOMCRYPT
+	depends on PACKAGE_srp
+
+config SRP_TOMCRYPT
+	bool "tomcrypt"
+
+config SRP_TOMMATH
+	bool "tommath"
+
+endchoice
+
+config SRP_SHA1
+	bool
+	default y
+	depends on PACKAGE_srp
+	depends on SRP_TOMCRYPT
+	prompt "Enable SHA1 support for SRP"

@@ -1,0 +1,11 @@
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -751,7 +751,7 @@ ath10k_htt_rx_h_peer_channel(struct ath1
+ 	if (WARN_ON_ONCE(!arvif))
+ 		return NULL;
+ 
+-	if (WARN_ON_ONCE(ath10k_mac_vif_chan(arvif->vif, &def)))
++	if (ath10k_mac_vif_chan(arvif->vif, &def))
+ 		return NULL;
+ 
+ 	return def.chan;

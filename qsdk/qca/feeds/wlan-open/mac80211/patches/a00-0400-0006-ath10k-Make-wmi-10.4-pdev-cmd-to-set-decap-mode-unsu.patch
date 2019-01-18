@@ -1,0 +1,11 @@
+--- a/drivers/net/wireless/ath/ath10k/wmi.c
++++ b/drivers/net/wireless/ath/ath10k/wmi.c
+@@ -1537,7 +1537,7 @@ static struct wmi_pdev_param_map wmi_10_
+ 	.burst_enable = WMI_10_4_PDEV_PARAM_BURST_ENABLE,
+ 	.cal_period = WMI_10_4_PDEV_PARAM_CAL_PERIOD,
+ 	.aggr_burst = WMI_10_4_PDEV_PARAM_AGGR_BURST,
+-	.rx_decap_mode = WMI_10_4_PDEV_PARAM_RX_DECAP_MODE,
++	.rx_decap_mode = WMI_PDEV_PARAM_UNSUPPORTED,
+ 	.smart_antenna_default_antenna =
+ 			WMI_10_4_PDEV_PARAM_SMART_ANTENNA_DEFAULT_ANTENNA,
+ 	.igmpmld_override = WMI_10_4_PDEV_PARAM_IGMPMLD_OVERRIDE,

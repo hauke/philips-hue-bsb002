@@ -1,0 +1,247 @@
+--- a/drivers/net/wireless/ath/ath10k/ahb.c
++++ b/drivers/net/wireless/ath/ath10k/ahb.c
+@@ -586,7 +586,7 @@ static int ath10k_ahb_resource_init(stru
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "irq: %d\n", ar_ahb->irq);
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_BOOT, "mem: 0x%p mem_len: %lu gcc mem: 0x%p tcsr_mem: 0x%p\n",
++	ath10k_dbg(ar, ATH10K_DBG_BOOT, "mem: 0x%pK mem_len: %lu gcc mem: 0x%pK tcsr_mem: 0x%pK\n",
+ 		   ar_ahb->mem, ar_ahb->mem_len,
+ 		   ar_ahb->gcc_mem, ar_ahb->tcsr_mem);
+ 	return 0;
+--- a/drivers/net/wireless/ath/ath10k/bmi.c
++++ b/drivers/net/wireless/ath/ath10k/bmi.c
+@@ -221,7 +221,7 @@ int ath10k_bmi_lz_data(struct ath10k *ar
+ 	u32 txlen;
+ 	int ret;
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi lz data buffer 0x%p length %d\n",
++	ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi lz data buffer 0x%pK length %d\n",
+ 		   buffer, length);
+ 
+ 	if (ar->bmi.done_sent) {
+@@ -287,7 +287,7 @@ int ath10k_bmi_fast_download(struct ath1
+ 	int ret;
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BMI,
+-		   "bmi fast download address 0x%x buffer 0x%p length %d\n",
++		   "bmi fast download address 0x%x buffer 0x%pK length %d\n",
+ 		   address, buffer, length);
+ 
+ 	ret = ath10k_bmi_lz_stream_start(ar, address);
+--- a/drivers/net/wireless/ath/ath10k/ce.c
++++ b/drivers/net/wireless/ath/ath10k/ce.c
+@@ -840,7 +840,7 @@ static int ath10k_ce_init_src_ring(struc
+ 	ath10k_ce_src_ring_highmark_set(ar, ctrl_addr, nentries);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT,
+-		   "boot init ce src ring id %d entries %d base_addr %p\n",
++		   "boot init ce src ring id %d entries %d base_addr %pK\n",
+ 		   ce_id, nentries, src_ring->base_addr_owner_space);
+ 
+ 	return 0;
+@@ -874,7 +874,7 @@ static int ath10k_ce_init_dest_ring(stru
+ 	ath10k_ce_dest_ring_highmark_set(ar, ctrl_addr, nentries);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT,
+-		   "boot ce dest ring id %d entries %d base_addr %p\n",
++		   "boot ce dest ring id %d entries %d base_addr %pK\n",
+ 		   ce_id, nentries, dest_ring->base_addr_owner_space);
+ 
+ 	return 0;
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -812,7 +812,7 @@ static int ath10k_download_and_run_otp(s
+ 
+ 	if (!ar->running_fw->fw_file.otp_data ||
+ 	    !ar->running_fw->fw_file.otp_len) {
+-		ath10k_warn(ar, "Not running otp, calibration will be incorrect (otp-data %p otp_len %zd)!\n",
++		ath10k_warn(ar, "Not running otp, calibration will be incorrect (otp-data %pK otp_len %zd)!\n",
+ 			    ar->running_fw->fw_file.otp_data,
+ 			    ar->running_fw->fw_file.otp_len);
+ 		return 0;
+@@ -876,7 +876,7 @@ static int ath10k_download_fw(struct ath
+ 	}
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT,
+-		   "boot uploading firmware image %p len %d\n",
++		   "boot uploading firmware image %pK len %d\n",
+ 		   data, data_len);
+ 
+ 	ret = ath10k_bmi_fast_download(ar, address, data, data_len);
+--- a/drivers/net/wireless/ath/ath10k/htc.c
++++ b/drivers/net/wireless/ath/ath10k/htc.c
+@@ -44,7 +44,7 @@ static struct sk_buff *ath10k_htc_build_
+ 	skb_cb = ATH10K_SKB_CB(skb);
+ 	memset(skb_cb, 0, sizeof(*skb_cb));
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_HTC, "%s: skb %p\n", __func__, skb);
++	ath10k_dbg(ar, ATH10K_DBG_HTC, "%s: skb %pK\n", __func__, skb);
+ 	return skb;
+ }
+ 
+@@ -62,7 +62,7 @@ static void ath10k_htc_notify_tx_complet
+ {
+ 	struct ath10k *ar = ep->htc->ar;
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_HTC, "%s: ep %d skb %p\n", __func__,
++	ath10k_dbg(ar, ATH10K_DBG_HTC, "%s: ep %d skb %pK\n", __func__,
+ 		   ep->eid, skb);
+ 
+ 	ath10k_htc_restore_tx_skb(ep->htc, skb);
+@@ -404,7 +404,7 @@ void ath10k_htc_rx_completion_handler(st
+ 		goto out;
+ 	}
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_HTC, "htc rx completion ep %d skb %p\n",
++	ath10k_dbg(ar, ATH10K_DBG_HTC, "htc rx completion ep %d skb %pK\n",
+ 		   eid, skb);
+ 	ep->ep_ops.ep_rx_complete(ar, skb);
+ 
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -934,7 +934,7 @@ static void ath10k_process_rx(struct ath
+ 	*status = *rx_status;
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_DATA,
+-		   "rx skb %p len %u peer %pM %s %s sn %u %s%s%s%s%s %srate_idx %u vht_nss %u freq %u band %u flag 0x%llx fcs-err %i mic-err %i amsdu-more %i\n",
++		   "rx skb %pK len %u peer %pM %s %s sn %u %s%s%s%s%s %srate_idx %u vht_nss %u freq %u band %u flag 0x%llx fcs-err %i mic-err %i amsdu-more %i\n",
+ 		   skb,
+ 		   skb->len,
+ 		   ieee80211_get_SA(hdr),
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -3526,7 +3526,7 @@ static int ath10k_mac_tx(struct ath10k *
+ 
+ 	if (info->flags & IEEE80211_TX_CTL_TX_OFFCHAN) {
+ 		if (!ath10k_mac_tx_frm_has_freq(ar)) {
+-			ath10k_dbg(ar, ATH10K_DBG_MAC, "queued offchannel skb %p\n",
++			ath10k_dbg(ar, ATH10K_DBG_MAC, "queued offchannel skb %pK\n",
+ 				   skb);
+ 
+ 			skb_queue_tail(&ar->offchan_tx_queue, skb);
+@@ -3588,7 +3588,7 @@ void ath10k_offchan_tx_work(struct work_
+ 
+ 		mutex_lock(&ar->conf_mutex);
+ 
+-		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac offchannel skb %p\n",
++		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac offchannel skb %pK\n",
+ 			   skb);
+ 
+ 		hdr = (struct ieee80211_hdr *)skb->data;
+@@ -3645,7 +3645,7 @@ void ath10k_offchan_tx_work(struct work_
+ 		time_left =
+ 		wait_for_completion_timeout(&ar->offchan_tx_completed, 3 * HZ);
+ 		if (time_left == 0)
+-			ath10k_warn(ar, "timed out waiting for offchannel skb %p\n",
++			ath10k_warn(ar, "timed out waiting for offchannel skb %pK\n",
+ 				    skb);
+ 
+ 		if (!peer && tmp_peer_created) {
+@@ -7152,7 +7152,7 @@ ath10k_mac_op_add_chanctx(struct ieee802
+ 	struct ath10k *ar = hw->priv;
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MAC,
+-		   "mac chanctx add freq %hu width %d ptr %p\n",
++		   "mac chanctx add freq %hu width %d ptr %pK\n",
+ 		   ctx->def.chan->center_freq, ctx->def.width, ctx);
+ 
+ 	mutex_lock(&ar->conf_mutex);
+@@ -7176,7 +7176,7 @@ ath10k_mac_op_remove_chanctx(struct ieee
+ 	struct ath10k *ar = hw->priv;
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MAC,
+-		   "mac chanctx remove freq %hu width %d ptr %p\n",
++		   "mac chanctx remove freq %hu width %d ptr %pK\n",
+ 		   ctx->def.chan->center_freq, ctx->def.width, ctx);
+ 
+ 	mutex_lock(&ar->conf_mutex);
+@@ -7241,7 +7241,7 @@ ath10k_mac_op_change_chanctx(struct ieee
+ 	mutex_lock(&ar->conf_mutex);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MAC,
+-		   "mac chanctx change freq %hu width %d ptr %p changed %x\n",
++		   "mac chanctx change freq %hu width %d ptr %pK changed %x\n",
+ 		   ctx->def.chan->center_freq, ctx->def.width, ctx, changed);
+ 
+ 	/* This shouldn't really happen because channel switching should use
+@@ -7299,7 +7299,7 @@ ath10k_mac_op_assign_vif_chanctx(struct
+ 	mutex_lock(&ar->conf_mutex);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MAC,
+-		   "mac chanctx assign ptr %p vdev_id %i\n",
++		   "mac chanctx assign ptr %pK vdev_id %i\n",
+ 		   ctx, arvif->vdev_id);
+ 
+ 	if (WARN_ON(arvif->is_started)) {
+@@ -7381,7 +7381,7 @@ ath10k_mac_op_unassign_vif_chanctx(struc
+ 	mutex_lock(&ar->conf_mutex);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MAC,
+-		   "mac chanctx unassign ptr %p vdev_id %i\n",
++		   "mac chanctx unassign ptr %pK vdev_id %i\n",
+ 		   ctx, arvif->vdev_id);
+ 
+ 	WARN_ON(!arvif->is_started);
+--- a/drivers/net/wireless/ath/ath10k/pci.c
++++ b/drivers/net/wireless/ath/ath10k/pci.c
+@@ -3051,7 +3051,7 @@ static int ath10k_pci_claim(struct ath10
+ 		goto err_master;
+ 	}
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot pci_mem 0x%p\n", ar_pci->mem);
++	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot pci_mem 0x%pK\n", ar_pci->mem);
+ 	return 0;
+ 
+ err_master:
+--- a/drivers/net/wireless/ath/ath10k/testmode.c
++++ b/drivers/net/wireless/ath/ath10k/testmode.c
+@@ -46,7 +46,7 @@ bool ath10k_tm_event_wmi(struct ath10k *
+ 	int ret;
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_TESTMODE,
+-		   "testmode event wmi cmd_id %d skb %p skb->len %d\n",
++		   "testmode event wmi cmd_id %d skb %pK skb->len %d\n",
+ 		   cmd_id, skb, skb->len);
+ 
+ 	ath10k_dbg_dump(ar, ATH10K_DBG_TESTMODE, NULL, "", skb->data, skb->len);
+@@ -426,7 +426,7 @@ static int ath10k_tm_cmd_wmi(struct ath1
+ 	cmd_id = nla_get_u32(tb[ATH10K_TM_ATTR_WMI_CMDID]);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_TESTMODE,
+-		   "testmode cmd wmi cmd_id %d buf %p buf_len %d\n",
++		   "testmode cmd wmi cmd_id %d buf %pK buf_len %d\n",
+ 		   cmd_id, buf, buf_len);
+ 
+ 	ath10k_dbg_dump(ar, ATH10K_DBG_TESTMODE, NULL, "", buf, buf_len);
+--- a/drivers/net/wireless/ath/ath10k/txrx.c
++++ b/drivers/net/wireless/ath/ath10k/txrx.c
+@@ -44,7 +44,7 @@ static void ath10k_report_offchan_tx(str
+ 	complete(&ar->offchan_tx_completed);
+ 	ar->offchan_tx_skb = NULL; /* just for sanity */
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_HTT, "completed offchannel skb %p\n", skb);
++	ath10k_dbg(ar, ATH10K_DBG_HTT, "completed offchannel skb %pK\n", skb);
+ out:
+ 	spin_unlock_bh(&ar->data_lock);
+ }
+--- a/drivers/net/wireless/ath/ath10k/wmi.c
++++ b/drivers/net/wireless/ath/ath10k/wmi.c
+@@ -1900,7 +1900,7 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k
+ 	ether_addr_copy(cmd->hdr.peer_macaddr.addr, ieee80211_get_DA(hdr));
+ 	memcpy(cmd->buf, msdu->data, msdu->len);
+ 
+-	ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi mgmt tx skb %p len %d ftype %02x stype %02x\n",
++	ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi mgmt tx skb %pK len %d ftype %02x stype %02x\n",
+ 		   msdu, skb->len, fc & IEEE80211_FCTL_FTYPE,
+ 		   fc & IEEE80211_FCTL_STYPE);
+ 	trace_ath10k_tx_hdr(ar, skb->data, skb->len);
+@@ -2373,7 +2373,7 @@ int ath10k_wmi_event_mgmt_rx(struct ath1
+ 		ath10k_mac_handle_beacon(ar, skb);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_MGMT,
+-		   "event mgmt rx skb %p len %d ftype %02x stype %02x\n",
++		   "event mgmt rx skb %pK len %d ftype %02x stype %02x\n",
+ 		   skb, skb->len,
+ 		   fc & IEEE80211_FCTL_FTYPE, fc & IEEE80211_FCTL_STYPE);
+ 

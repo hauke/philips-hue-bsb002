@@ -1,0 +1,26 @@
+--- a/net/mac80211/driver-ops.h
++++ b/net/mac80211/driver-ops.h
+@@ -161,10 +161,6 @@ static inline void drv_bss_info_changed(struct ieee80211_local *local,
+ 			 sdata->vif.type != NL80211_IFTYPE_OCB))
+ 		return;
+ 
+-	if (WARN_ON_ONCE(sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE ||
+-			 sdata->vif.type == NL80211_IFTYPE_MONITOR))
+-		return;
+-
+ 	if (!check_sdata_in_driver(sdata))
+ 		return;
+ 
+--- a/net/mac80211/main.c
++++ b/net/mac80211/main.c
+@@ -200,7 +200,9 @@ void ieee80211_bss_info_change_notify(struct ieee80211_sub_if_data *sdata,
+ {
+ 	struct ieee80211_local *local = sdata->local;
+ 
+-	if (!changed || sdata->vif.type == NL80211_IFTYPE_AP_VLAN)
++	if (!changed || sdata->vif.type == NL80211_IFTYPE_AP_VLAN ||
++	    sdata->vif.type == NL80211_IFTYPE_P2P_DEVICE ||
++	    sdata->vif.type == NL80211_IFTYPE_MONITOR)
+ 		return;
+ 
+ 	drv_bss_info_changed(local, sdata, &sdata->vif.bss_conf, changed);

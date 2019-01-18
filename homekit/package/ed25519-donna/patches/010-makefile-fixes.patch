@@ -1,0 +1,58 @@
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,55 @@
++NAME	:= libed25519-donna
++MAJOR	:= 1
++MINOR	:= 0
++VER	:= $(MAJOR).$(MINOR)
++DNAMEM	:= $(NAME).so.$(MAJOR)
++DNAMEV	:= $(NAME).so.$(VER)
++DNAME	:= $(NAME).so
++SNAME	:= $(NAME).a
++SRC	:= ed25519.c
++HEADERS	:= ed25519.h
++H_DIR	:= .
++OBJ	:= $(SRC:.c=.o)
++CFLAGS	+= -std=c99 -Wall -W -Werror -O3 -fPIC -I. -DED25519_CUSTOMHASH -DED25519_CUSTOMRANDOM
++LDFLAGS	+=
++
++prefix		:=/usr
++libdir		:=$(prefix)/lib
++includedir	:=$(prefix)/include
++
++.PHONY: all clean fclean install rebuild
++
++all: $(SNAME) $(DNAMEV)
++
++$(SNAME): $(OBJ)
++	$(AR) $(ARFLAGS) $@ $^
++
++$(DNAMEV): LDFLAGS += -shared -Wl,-soname,$(DNAMEM)
++$(DNAMEV): $(OBJ)
++	$(CC) $(LDFLAGS) $^ -o $@
++	rm -f $(DNAMEM) $(DNAME)
++	ln -s $@ $(DNAMEM)
++	ln -s $(DNAMEM) $(DNAME)
++
++clean:
++	$(RM) $(OBJ)
++
++fclean: clean
++	$(RM) $(SNAME) $(DNAMEV) $(DNAMEM) $(DNAME)
++
++install: $(SNAME) $(DNAMEV)
++	-@if [ ! -d $(DESTDIR)$(libdir) ]; then mkdir -p $(DESTDIR)$(libdir); fi
++	-@if [ ! -d $(DESTDIR)$(includedir) ]; then mkdir -p $(DESTDIR)$(includedir); fi
++	cp $(SNAME) $(DESTDIR)$(libdir)
++	chmod 644 $(DESTDIR)$(libdir)/$(SNAME)
++	cp $(DNAMEV) $(DESTDIR)$(libdir)
++	chmod 755 $(DESTDIR)$(libdir)/$(DNAMEV)
++	rm -f $(DESTDIR)$(libdir)/$(DNAMEM)
++	rm -f $(DESTDIR)$(libdir)/$(DNAME)
++	ln -s $(DNAMEV) $(DESTDIR)$(libdir)/$(DNAMEM)
++	ln -s $(DNAMEM) $(DESTDIR)$(libdir)/$(DNAME)
++	$(foreach header,$(HEADERS),cp $(H_DIR)/$(header) $(DESTDIR)$(includedir); )
++	$(foreach header,$(HEADERS),chmod 644 $(DESTDIR)$(includedir)/$(header); )
++
++rebuild: fclean all
++

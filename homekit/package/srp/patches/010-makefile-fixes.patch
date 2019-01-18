@@ -1,0 +1,70 @@
+--- a/libsrp/Makefile.in
++++ b/libsrp/Makefile.in
+@@ -74,7 +74,15 @@ include_HEADERS = srp.h srp_aux.h t_clie
+ 
+ noinst_HEADERS = t_defines.h t_read.h nys_config.h yp_misc.h endXXent.h getXXent.h setXXent.h getXXbyYY.h nss_defs.h nsswitch.h
+ 
+-lib_LIBRARIES = libsrp.a
++MAJ=2
++LIBNAME=srp
++LIBRARY=lib$(LIBNAME).a
++SOLIBRARY=lib$(LIBNAME).so
++SHAREDLIB=$(SOLIBRARY).$(VERSION)
++libshared_LIBRARIES = $(SHAREDLIB) $(SOLIBRARY) $(SOLIBRARY).$(MAJ)
++libstatic_LIBRARIES = $(LIBRARY)
++
++lib_LIBRARIES = $(SHAREDLIB) $(libstatic_LIBRARIES)
+ 
+ libsrp_a_SOURCES =    t_client.c t_conf.c t_conv.c t_getpass.c t_sha.c t_math.c t_misc.c   t_pw.c t_read.c t_server.c t_truerand.c cstr.c   srp.c rfc2945_client.c rfc2945_server.c srp6_client.c srp6_server.c   yp_misc.c yp_tpasswd.c yp_tconf.c nsw_tpasswd.c nsw_tconf.c nsswitch.c
+ 
+@@ -143,6 +151,7 @@ srp6bench_LDADD = $(LDADD)
+ srp6bench_DEPENDENCIES =  libsrp.a
+ srp6bench_LDFLAGS = 
+ CFLAGS = @CFLAGS@
++CFLAGS_SHARED = -shared -Wl,-soname,$(SOLIBRARY).$(MAJ)
+ COMPILE = $(CC) $(DEFS) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
+ CCLD = $(CC)
+ LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(LDFLAGS) -o $@
+@@ -218,14 +227,20 @@ maintainer-clean-libLIBRARIES:
+ install-libLIBRARIES: $(lib_LIBRARIES)
+ 	@$(NORMAL_INSTALL)
+ 	$(mkinstalldirs) $(DESTDIR)$(libdir)
+-	@list='$(lib_LIBRARIES)'; for p in $$list; do \
++	@list='$(libstatic_LIBRARIES)'; for p in $$list; do \
+ 	  if test -f $$p; then \
+ 	    echo " $(INSTALL_DATA) $$p $(DESTDIR)$(libdir)/$$p"; \
+ 	    $(INSTALL_DATA) $$p $(DESTDIR)$(libdir)/$$p; \
+ 	  else :; fi; \
+ 	done
++	@list='$(libshared_LIBRARIES)'; for p in $$list; do \
++	  if test -f $$p; then \
++	    echo " cp -d $$p $(DESTDIR)$(libdir)/$$p"; \
++	    cp -d $$p $(DESTDIR)$(libdir)/$$p; \
++	  else :; fi; \
++	done
+ 	@$(POST_INSTALL)
+-	@list='$(lib_LIBRARIES)'; for p in $$list; do \
++	@list='$(libstatic_LIBRARIES)'; for p in $$list; do \
+ 	  if test -f $$p; then \
+ 	    echo " $(RANLIB) $(DESTDIR)$(libdir)/$$p"; \
+ 	    $(RANLIB) $(DESTDIR)$(libdir)/$$p; \
+@@ -257,11 +272,18 @@ distclean-compile:
+ 
+ maintainer-clean-compile:
+ 
+-libsrp.a: $(libsrp_a_OBJECTS) $(libsrp_a_DEPENDENCIES)
++$(LIBRARY): $(libsrp_a_OBJECTS) $(libsrp_a_DEPENDENCIES)
+ 	-rm -f libsrp.a
+ 	$(AR) cru libsrp.a $(libsrp_a_OBJECTS) $(libsrp_a_LIBADD)
+ 	$(RANLIB) libsrp.a
+ 
++$(SHAREDLIB): $(libsrp_a_OBJECTS) $(libsrp_a_DEPENDENCIES)
++	-rm -f $@
++	-rm -f $(SOLIBRARY) $(SOLIBRARY).$(MAJ)
++	$(CC) $(CFLAGS_SHARED) $(LDFLAGS) -o $@ $(libsrp_a_OBJECTS) -lc $(libsrp_a_LIBADD)
++	ln -s $@ $(SOLIBRARY).$(MAJ)
++	ln -s $(SOLIBRARY).$(MAJ) $(SOLIBRARY)
++
+ mostlyclean-binPROGRAMS:
+ 
+ clean-binPROGRAMS:

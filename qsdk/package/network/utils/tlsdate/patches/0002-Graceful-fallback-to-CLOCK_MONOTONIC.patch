@@ -1,0 +1,31 @@
+From 5d114433a44b3111c4730f1dc27a3007965598f4 Mon Sep 17 00:00:00 2001
+From: Pieter Smith <pieter.smith@philips.com>
+Date: Wed, 23 Nov 2016 13:25:54 +0100
+Subject: [PATCH 2/2] Graceful fallback to CLOCK_MONOTONIC
+
+Gracefully falls back to CLOCK_MONOTONIC if CLOCK_MONOTONIC_RAW is not available on older kernels
+---
+ src/events/check_continuity.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/events/check_continuity.c b/src/events/check_continuity.c
+index 9340fa1..35cbd34 100644
+--- a/src/events/check_continuity.c
++++ b/src/events/check_continuity.c
+@@ -39,8 +39,13 @@ check_continuity (time_t *delta)
+   struct timespec monotonic, real;
+   if (clock_gettime (CLOCK_REALTIME, &real) < 0)
+     return -1;
++#ifndef CLOCK_MONOTONIC_RAW
++  if (clock_gettime (CLOCK_MONOTONIC, &monotonic) < 0)
++    return -1;
++#else
+   if (clock_gettime (CLOCK_MONOTONIC_RAW, &monotonic) < 0)
+     return -1;
++#endif
+   new_delta = real.tv_sec - monotonic.tv_sec;
+   if (*delta)
+     {
+-- 
+2.7.4
+

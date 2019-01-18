@@ -1,0 +1,209 @@
+From 189df9cb04e6e7b6299e730120ff36d43ba934eb Mon Sep 17 00:00:00 2001
+From: Paul Oppeneer <paul.oppeneer@philips.com>
+Date: Wed, 13 May 2015 18:59:22 +0200
+Subject: [PATCH] adds optional fail hook for use by init scripts
+
+When fail threshold is reached an optional FAIL_COMMAND
+will be executed if specified
+---
+ service/instance.c | 108 +++++++++++++++++++++++++++++++++++++++++++++++------
+ service/instance.h |   1 +
+ 2 files changed, 98 insertions(+), 11 deletions(-)
+
+diff --git a/service/instance.c b/service/instance.c
+index 1b28a7a..5784af1 100644
+--- a/service/instance.c
++++ b/service/instance.c
+@@ -30,6 +30,7 @@
+ 
+ enum {
+ 	INSTANCE_ATTR_COMMAND,
++	INSTANCE_ATTR_FAIL,
+ 	INSTANCE_ATTR_ENV,
+ 	INSTANCE_ATTR_DATA,
+ 	INSTANCE_ATTR_NETDEV,
+@@ -43,6 +44,7 @@ enum {
+ 
+ static const struct blobmsg_policy instance_attr[__INSTANCE_ATTR_MAX] = {
+ 	[INSTANCE_ATTR_COMMAND] = { "command", BLOBMSG_TYPE_ARRAY },
++	[INSTANCE_ATTR_FAIL] = { "fail", BLOBMSG_TYPE_ARRAY },
+ 	[INSTANCE_ATTR_ENV] = { "env", BLOBMSG_TYPE_TABLE },
+ 	[INSTANCE_ATTR_DATA] = { "data", BLOBMSG_TYPE_TABLE },
+ 	[INSTANCE_ATTR_NETDEV] = { "netdev", BLOBMSG_TYPE_ARRAY },
+@@ -118,6 +120,62 @@ instance_limits(const char *limit, const char *value)
+ 	}
+ }
+ 
++static int
++get_string_alloc_len(struct blob_attr *command)
++{
++	struct blob_attr *cur;
++	int str_len = 0;
++	int rem;
++	bool spaceNeeded = false;
++
++	blobmsg_for_each_attr(cur, command, rem)
++	{
++		if (spaceNeeded) {
++			++str_len;
++		}
++		str_len += strlen(blobmsg_get_string(cur));
++		spaceNeeded = true;
++	}
++
++	return str_len + 1;
++}
++
++static void
++run_command(struct blob_attr *command)
++{
++	const char* space = " ";
++	char* cmd = NULL;
++	int cmd_len = 0;
++	int rem;
++	struct blob_attr *cur;
++
++	cmd_len = get_string_alloc_len(command);
++
++	if (cmd_len == 0)
++		return;
++
++	blobmsg_for_each_attr(cur, command, rem)
++	{
++
++		char* part = blobmsg_get_string(cur);
++
++		if (part) {
++			if (!cmd) {
++				cmd = alloca(cmd_len);
++				memset(cmd, '\0', cmd_len);
++			} else {
++				strncat(cmd, space, cmd_len);
++			}
++
++			strncat(cmd, part, cmd_len);
++		}
++	}
++
++	if (cmd) {
++		system(cmd);
++	}
++}
++
+ static void
+ instance_run(struct service_instance *in)
+ {
+@@ -230,6 +288,9 @@ instance_exit(struct uloop_process *p, int ret)
+ 								in->srv->name, in->name, in->respawn_count, runtime);
+ 			in->restart = in->respawn = 0;
+ 			in->halt = 1;
++			if(in->fail) {
++				run_command(in->fail);
++			}
+ 		} else {
+ 			uloop_timeout_set(&in->timeout, in->respawn_timeout * 1000);
+ 		}
+@@ -265,6 +326,9 @@ instance_config_changed(struct service_instance *in, struct service_instance *in
+ 	if (!blob_attr_equal(in->command, in_new->command))
+ 		return true;
+ 
++	if (!blob_attr_equal(in->fail, in_new->fail))
++		return true;
++
+ 	if (!blobmsg_list_equal(&in->env, &in_new->env))
+ 		return true;
+ 
+@@ -365,31 +429,48 @@ instance_fill_array(struct blobmsg_list *l, struct blob_attr *cur, blobmsg_updat
+ }
+ 
+ static bool
+-instance_config_parse(struct service_instance *in)
++instance_verify_command(struct blob_attr * command_blob)
+ {
+-	struct blob_attr *tb[__INSTANCE_ATTR_MAX];
+-	struct blob_attr *cur, *cur2;
+ 	int argc = 0;
+ 	int rem;
++	struct blob_attr *cur;
+ 
+-	blobmsg_parse(instance_attr, __INSTANCE_ATTR_MAX, tb,
+-		blobmsg_data(in->config), blobmsg_data_len(in->config));
+-
+-	cur = tb[INSTANCE_ATTR_COMMAND];
+-	if (!cur)
++	if (!command_blob)
+ 		return false;
+ 
+-	if (!blobmsg_check_attr_list(cur, BLOBMSG_TYPE_STRING))
++	if (!blobmsg_check_attr_list(command_blob, BLOBMSG_TYPE_STRING))
+ 		return false;
+ 
+-	blobmsg_for_each_attr(cur2, cur, rem) {
++	blobmsg_for_each_attr(cur, command_blob, rem) {
+ 		argc++;
+ 		break;
+ 	}
+ 	if (!argc)
+ 		return false;
+ 
+-	in->command = cur;
++	return true;
++}
++
++
++static bool
++instance_config_parse(struct service_instance *in)
++{
++	struct blob_attr *tb[__INSTANCE_ATTR_MAX];
++	struct blob_attr *cur, *cur2;
++	int rem;
++
++	blobmsg_parse(instance_attr, __INSTANCE_ATTR_MAX, tb,
++		blobmsg_data(in->config), blobmsg_data_len(in->config));
++
++	if (!instance_verify_command(tb[INSTANCE_ATTR_COMMAND])) {
++		return false;
++	} else {
++		in->command = tb[INSTANCE_ATTR_COMMAND];
++	}
++
++	if (instance_verify_command(tb[INSTANCE_ATTR_FAIL])) {
++		in->fail = tb[INSTANCE_ATTR_FAIL];
++	}
+ 
+ 	if (tb[INSTANCE_ATTR_RESPAWN]) {
+ 		int i = 0;
+@@ -460,6 +541,7 @@ instance_config_move(struct service_instance *in, struct service_instance *in_sr
+ 	blobmsg_list_move(&in->limits, &in_src->limits);
+ 	in->trigger = in_src->trigger;
+ 	in->command = in_src->command;
++	in->fail = in_src->fail;
+ 	in->name = in_src->name;
+ 	in->node.avl.key = in_src->node.avl.key;
+ 
+@@ -529,6 +611,10 @@ void instance_dump(struct blob_buf *b, struct service_instance *in, int verbose)
+ 		blobmsg_add_u32(b, "pid", in->proc.pid);
+ 	blobmsg_add_blob(b, in->command);
+ 
++	if(in->fail) {
++		blobmsg_add_blob(b, in->fail);
++	}
++
+ 	if (!avl_is_empty(&in->env.avl)) {
+ 		struct blobmsg_list_node *var;
+ 		void *e = blobmsg_open_table(b, "env");
+diff --git a/service/instance.h b/service/instance.h
+index e7416ab..a91e347 100644
+--- a/service/instance.h
++++ b/service/instance.h
+@@ -44,6 +44,7 @@ struct service_instance {
+ 	struct uloop_timeout timeout;
+ 
+ 	struct blob_attr *command;
++	struct blob_attr *fail;
+ 	struct blob_attr *trigger;
+ 	struct blobmsg_list env;
+ 	struct blobmsg_list data;
+-- 
+1.9.1
+

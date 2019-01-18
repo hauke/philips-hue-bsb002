@@ -1,0 +1,135 @@
+avl - PacketBB handler library (see RFC 5444)
+
+Copyright (c) 2010 Henning Rogge <hrogge@googlemail.com>
+Original OLSRd implementation by Hannes Gredler <hannes@gredler.at>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+* Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in
+  the documentation and/or other materials provided with the
+  distribution.
+* Neither the name of olsr.org, olsrd nor the names of its
+  contributors may be used to endorse or promote products derived
+  from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+Visit http://www.olsr.org/git for more information.
+
+If you find this software useful feel free to make a donation
+to the project. For more information see the website or contact
+the copyright holders.
+
+---------------------------------------------------------------------------
+
+list - Linked list inline functions
+Copyright (c) 2011 Felix Fietkau <nbd@openwrt.org>
+Copyright (c) 2010 Isilon Systems, Inc.
+Copyright (c) 2010 iX Systems, Inc.
+Copyright (c) 2010 Panasas, Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice unmodified, this list of conditions, and the following
+   disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+---------------------------------------------------------------------------
+
+avl-cmp
+Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
+
+base64 - libubox base64 functions
+Copyright (C) 2015 Felix Fietkau <nbd@openwrt.org>
+
+blob - library for generating/parsing tagged binary data
+Copyright (C) 2010 Felix Fietkau <nbd@openwrt.org>
+
+blobmsg, blobmsg_json
+Copyright (C) 2010-2012 Felix Fietkau <nbd@openwrt.org>
+
+jshn - Library for parsing and generating JSON from shell scripts
+Copyright (C) 2011-2013 Felix Fietkau <nbd@openwrt.org>
+
+json_script
+Copyright (C) 2013 Felix Fietkau <nbd@openwrt.org>
+
+kvlist - simple key/value store
+Copyright (C) 2014 Felix Fietkau <nbd@openwrt.org>
+
+uloop
+Copyright (C) 2012 John Crispin <blogic@openwrt.org>
+
+md5
+Copyright (C) 2014 Felix Fietkau <nbd@openwrt.org>
+
+runqueue - a simple task queueing/completion tracking helper
+Copyright (C) 2013 Felix Fietkau <nbd@openwrt.org>
+
+safe_list - linked list protected against recursive iteration with deletes
+Copyright (C) 2013 Felix Fietkau <nbd@openwrt.org>
+
+ulog - simple logging functions
+Copyright (C) 2015 Jo-Philipp Wich <jow@openwrt.org>
+
+uloop - event loop implementation
+Copyright (C) 2010-2013 Felix Fietkau <nbd@openwrt.org>
+
+usock - socket helper functions
+Copyright (C) 2010 Steven Barth <steven@midlink.org>
+Copyright (C) 2011-2012 Felix Fietkau <nbd@openwrt.org>
+
+ustream - library for stream buffer management
+Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
+
+utils - misc libubox utility functions
+Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
+
+vlist
+Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+

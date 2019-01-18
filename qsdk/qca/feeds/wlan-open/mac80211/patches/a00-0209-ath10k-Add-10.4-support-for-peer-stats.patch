@@ -1,0 +1,410 @@
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -1746,7 +1746,7 @@ static int ath10k_core_init_firmware_fea
+ 		ar->max_num_vdevs = TARGET_NUM_VDEVS;
+ 		ar->htt.max_num_pending_tx = TARGET_NUM_MSDU_DESC;
+ 		ar->fw_stats_req_mask = WMI_STAT_PDEV | WMI_STAT_VDEV |
+-			WMI_STAT_PEER;
++					WMI_STAT_PEER;
+ 		ar->max_spatial_stream = WMI_MAX_SPATIAL_STREAM;
+ 		break;
+ 	case ATH10K_FW_WMI_OP_VERSION_10_1:
+@@ -1787,7 +1787,7 @@ static int ath10k_core_init_firmware_fea
+ 		ar->htt.max_num_pending_tx = TARGET_TLV_NUM_MSDU_DESC;
+ 		ar->wow.max_num_patterns = TARGET_TLV_NUM_WOW_PATTERNS;
+ 		ar->fw_stats_req_mask = WMI_STAT_PDEV | WMI_STAT_VDEV |
+-			WMI_STAT_PEER;
++					WMI_STAT_PEER;
+ 		ar->max_spatial_stream = WMI_MAX_SPATIAL_STREAM;
+ 		break;
+ 	case ATH10K_FW_WMI_OP_VERSION_10_4:
+--- a/drivers/net/wireless/ath/ath10k/wmi.h
++++ b/drivers/net/wireless/ath/ath10k/wmi.h
+@@ -4130,12 +4130,12 @@ struct wmi_pdev_stats_peer {
+ } __packed;
+ 
+ enum wmi_stats_id {
+-	WMI_STAT_PEER = BIT(0),
+-	WMI_STAT_AP = BIT(1),
+-	WMI_STAT_PDEV = BIT(2),
+-	WMI_STAT_VDEV = BIT(3),
+-	WMI_STAT_BCNFLT = BIT(4),
+-	WMI_STAT_VDEV_RATE = BIT(5),
++	WMI_STAT_PEER =		BIT(0),
++	WMI_STAT_AP = 		BIT(1),
++	WMI_STAT_PDEV = 	BIT(2),
++	WMI_STAT_VDEV = 	BIT(3),
++	WMI_STAT_BCNFLT = 	BIT(4),
++	WMI_STAT_VDEV_RATE = 	BIT(5),
+ };
+ 
+ enum wmi_10_4_stats_id {
+@@ -4345,7 +4345,6 @@ struct wmi_10_4_peer_stats {
+ } __packed;
+ 
+ struct wmi_10_4_peer_extd_stats {
+-	struct wmi_10_4_peer_stats common;
+ 	struct wmi_mac_addr peer_macaddr;
+ 	__le32 inactive_time;
+ 	__le32 peer_chain_rssi;
+@@ -4353,6 +4352,19 @@ struct wmi_10_4_peer_extd_stats {
+ 	__le32 reserved[10];
+ } __packed;
+ 
++struct wmi_10_4_bss_bcn_stats {
++	__le32 vdev_id;
++	__le32 bss_bcns_dropped;
++	__le32 bss_bcn_delivered;
++} __packed;
++
++struct wmi_10_4_bss_bcn_filter_stats {
++	__le32 bcns_dropped;
++	__le32 bcns_delivered;
++	__le32 active_filters;
++	struct wmi_10_4_bss_bcn_stats bss_stats;
++} __packed;
++
+ struct wmi_10_2_pdev_ext_stats {
+ 	__le32 rx_rssi_comb;
+ 	__le32 rx_rssi[4];
+--- a/drivers/net/wireless/ath/ath10k/debugfs_sta.c
++++ b/drivers/net/wireless/ath/ath10k/debugfs_sta.c
+@@ -310,9 +310,29 @@ void ath10k_update_peer_tx_stats(struct
+ 	spin_unlock_bh(&ar->data_lock);
+ }
+ 
+-void ath10k_sta_update_rx_duration(struct ath10k *ar, struct list_head *head)
++static void ath10k_sta_update_extd_stats_rx_duration(struct ath10k *ar,
++						     struct list_head *head)
++{
++	struct ieee80211_sta *sta;
++	struct ath10k_fw_extd_stats_peer *peer;
++	struct ath10k_sta *arsta;
++
++	rcu_read_lock();
++	list_for_each_entry(peer, head, list) {
++		sta = ieee80211_find_sta_by_ifaddr(ar->hw, peer->peer_macaddr,
++						   NULL);
++		if (!sta)
++			continue;
++		arsta = (struct ath10k_sta *)sta->drv_priv;
++		arsta->rx_duration += (u64)peer->rx_duration;
++	}
++	rcu_read_unlock();
++}
++
++static void ath10k_sta_update_stats_rx_duration(struct ath10k *ar,
++						struct list_head *head)
+ {	struct ieee80211_sta *sta;
+-	struct ath10k_fw_stats_peer *peer;
++ 	struct ath10k_fw_stats_peer *peer;
+ 	struct ath10k_sta *arsta;
+ 
+ 	rcu_read_lock();
+@@ -327,6 +347,51 @@ void ath10k_sta_update_rx_duration(struc
+ 	rcu_read_unlock();
+ }
+ 
++void ath10k_sta_statistics(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
++			   struct ieee80211_sta *sta,
++			   struct station_info *sinfo)
++{
++	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
++	struct ath10k *ar = arsta->arvif->ar;
++
++	mutex_lock(&ar->conf_mutex);
++
++	if (ar->state != ATH10K_STATE_ON &&
++	    ar->state != ATH10K_STATE_RESTARTED)
++		goto out;
++
++	if (!ath10k_peer_stats_enabled(ar))
++		goto out;
++
++	sinfo->rx_duration = arsta->rx_duration;
++	sinfo->filled |= 1ULL << NL80211_STA_INFO_RX_DURATION;
++
++	/* fill tx bitrate info */
++	if ((arsta->tx_stats.txrate.flags == WMI_RATE_PREAMBLE_CCK) ||
++            (arsta->tx_stats.txrate.flags == WMI_RATE_PREAMBLE_OFDM))
++		sinfo->txrate.legacy = arsta->tx_stats.txrate.legacy;
++	else {
++		sinfo->txrate.flags = arsta->tx_stats.txrate.flags;
++		sinfo->txrate.mcs = arsta->tx_stats.txrate.mcs;
++		sinfo->txrate.nss = arsta->tx_stats.txrate.nss;
++		sinfo->txrate.bw = arsta->tx_stats.txrate.bw;
++	}
++	sinfo->filled |= 1ULL << NL80211_STA_INFO_TX_BITRATE;
++out:
++	mutex_unlock(&ar->conf_mutex);
++}
++
++void ath10k_sta_update_rx_duration(struct ath10k *ar,
++				   struct ath10k_fw_stats *stats)
++{
++	if (ar->running_fw->fw_file.wmi_op_version <
++		ATH10K_FW_WMI_OP_VERSION_10_4)
++		ath10k_sta_update_stats_rx_duration(ar, &stats->peers);
++	else
++		ath10k_sta_update_extd_stats_rx_duration(ar,
++							 &stats->peers_extd);
++}
++
+ static ssize_t ath10k_dbg_sta_read_aggr_mode(struct file *file,
+ 					     char __user *user_buf,
+ 					     size_t count, loff_t *ppos)
+@@ -541,28 +606,6 @@ static const struct file_operations fops
+ 	.llseek = default_llseek,
+ };
+ 
+-static ssize_t ath10k_dbg_sta_read_rx_duration(struct file *file,
+-					       char __user *user_buf,
+-					       size_t count, loff_t *ppos)
+-{
+-	struct ieee80211_sta *sta = file->private_data;
+-	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+-	char buf[100];
+-	int len = 0;
+-
+-	len = scnprintf(buf, sizeof(buf),
+-			"%llu usecs\n", arsta->rx_duration);
+-
+-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+-}
+-
+-static const struct file_operations fops_rx_duration = {
+-	.read = ath10k_dbg_sta_read_rx_duration,
+-	.open = simple_open,
+-	.owner = THIS_MODULE,
+-	.llseek = default_llseek,
+-};
+-
+ void ath10k_debug_process_tx_stats(struct ath10k *ar, u32 peer_id,
+ 			     	   struct ath10k_per_peer_tx_stats *p_tx_stats)
+ {
+@@ -816,8 +859,6 @@ void ath10k_sta_add_debugfs(struct ieee8
+ 	debugfs_create_file("addba", S_IWUSR, dir, sta, &fops_addba);
+ 	debugfs_create_file("addba_resp", S_IWUSR, dir, sta, &fops_addba_resp);
+ 	debugfs_create_file("delba", S_IWUSR, dir, sta, &fops_delba);
+-	debugfs_create_file("rx_duration", S_IRUGO, dir, sta,
+-			    &fops_rx_duration);
+ 	debugfs_create_file("tx_stats", S_IRUGO, dir, sta,
+ 			    &fops_tx_stats);
+ 	debugfs_create_file("tpc", S_IRUGO | S_IWUSR, dir, sta,
+--- a/drivers/net/wireless/ath/ath10k/debug.h
++++ b/drivers/net/wireless/ath/ath10k/debug.h
+@@ -219,15 +219,19 @@ ath10k_debug_get_new_fw_crash_data(struc
+ #ifdef CPTCFG_MAC80211_DEBUGFS
+ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+ 			    struct ieee80211_sta *sta, struct dentry *dir);
+-void ath10k_sta_update_rx_duration(struct ath10k *ar, struct list_head *peer);
++void ath10k_sta_update_rx_duration(struct ath10k *ar,
++				   struct ath10k_fw_stats *stats);
+ int ath10k_debug_tx_peer_stats_enable(struct ath10k *ar);
+ void ath10k_update_peer_tx_stats(struct ath10k *ar, struct ath10k_sta *sta,
+ 				 struct ath10k_per_peer_tx_stats *p_tx_stats);
+ void ath10k_fetch_10_2_tx_stats(struct ath10k *ar, u8 *data);
+ void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data);
++void ath10k_sta_statistics(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
++			   struct ieee80211_sta *sta,
++			   struct station_info *sinfo);
+ #else
+ static inline void ath10k_sta_update_rx_duration(struct ath10k *ar,
+-						 struct list_head *peer)
++						 struct ath10k_fw_stats *stats)
+ {
+ }
+ static inline int ath10k_debug_tx_peer_stats_enable(struct ath10k *ar)
+@@ -244,6 +248,12 @@ static inline void ath10k_fetch_10_2_tx_
+ static inline void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data)
+ {
+ }
++static inline void ath10k_sta_statistics(struct ieee80211_hw *hw,
++					 struct ieee80211_vif *vif,
++					 struct ieee80211_sta *sta,
++					 struct station_info *sinfo)
++{
++}
+ #endif /* CPTCFG_MAC80211_DEBUGFS */
+ void ath10k_dbg_bug_on_fw_assert(struct ath10k *ar);
+ 
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -7457,6 +7457,7 @@ static const struct ieee80211_ops ath10k
+ #endif
+ #ifdef CPTCFG_MAC80211_DEBUGFS
+ 	.sta_add_debugfs		= ath10k_sta_add_debugfs,
++	.sta_statistics			= ath10k_sta_statistics,
+ #endif
+ };
+ 
+--- a/drivers/net/wireless/ath/ath10k/core.h
++++ b/drivers/net/wireless/ath/ath10k/core.h
+@@ -168,6 +168,13 @@ struct ath10k_fw_stats_peer {
+ 	u32 rx_duration;
+ };
+ 
++struct ath10k_fw_extd_stats_peer {
++	struct list_head list;
++
++	u8 peer_macaddr[ETH_ALEN];
++	u32 rx_duration;
++};
++
+ struct ath10k_fw_stats_vdev {
+ 	struct list_head list;
+ 
+@@ -262,6 +269,7 @@ struct ath10k_fw_stats {
+ 	struct list_head pdevs;
+ 	struct list_head vdevs;
+ 	struct list_head peers;
++	struct list_head peers_extd;
+ };
+ 
+ #define ATH10K_TPC_TABLE_TYPE_FLAG	1
+--- a/drivers/net/wireless/ath/ath10k/debug.c
++++ b/drivers/net/wireless/ath/ath10k/debug.c
+@@ -314,6 +314,16 @@ static void ath10k_fw_stats_peers_free(s
+ 	}
+ }
+ 
++static void ath10k_fw_extd_stats_peers_free(struct list_head *head)
++{
++	struct ath10k_fw_extd_stats_peer *i, *tmp;
++
++	list_for_each_entry_safe(i, tmp, head, list) {
++		list_del(&i->list);
++		kfree(i);
++	}
++}
++
+ static void ath10k_debug_fw_stats_reset(struct ath10k *ar)
+ {
+ 	spin_lock_bh(&ar->data_lock);
+@@ -321,6 +331,7 @@ static void ath10k_debug_fw_stats_reset(
+ 	ath10k_fw_stats_pdevs_free(&ar->debug.fw_stats.pdevs);
+ 	ath10k_fw_stats_vdevs_free(&ar->debug.fw_stats.vdevs);
+ 	ath10k_fw_stats_peers_free(&ar->debug.fw_stats.peers);
++	ath10k_fw_extd_stats_peers_free(&ar->debug.fw_stats.peers_extd);
+ 	spin_unlock_bh(&ar->data_lock);
+ }
+ 
+@@ -335,6 +346,7 @@ void ath10k_debug_fw_stats_process(struc
+ 	INIT_LIST_HEAD(&stats.pdevs);
+ 	INIT_LIST_HEAD(&stats.vdevs);
+ 	INIT_LIST_HEAD(&stats.peers);
++	INIT_LIST_HEAD(&stats.peers_extd);
+ 
+ 	spin_lock_bh(&ar->data_lock);
+ 	ret = ath10k_wmi_pull_fw_stats(ar, skb, &stats);
+@@ -355,7 +367,7 @@ void ath10k_debug_fw_stats_process(struc
+ 	 *     delivered which is treated as end-of-data and is itself discarded
+ 	 */
+ 	if (ath10k_peer_stats_enabled(ar))
+-		ath10k_sta_update_rx_duration(ar, &stats.peers);
++		ath10k_sta_update_rx_duration(ar, &stats);
+ 
+ 	if (ar->debug.fw_stats_done) {
+ 		if (!ath10k_peer_stats_enabled(ar))
+@@ -397,6 +409,8 @@ void ath10k_debug_fw_stats_process(struc
+ 
+ 		list_splice_tail_init(&stats.peers, &ar->debug.fw_stats.peers);
+ 		list_splice_tail_init(&stats.vdevs, &ar->debug.fw_stats.vdevs);
++		list_splice_tail_init(&stats.peers_extd,
++				      &ar->debug.fw_stats.peers_extd);
+ 	}
+ 
+ 	complete(&ar->debug.fw_stats_complete);
+@@ -408,6 +422,7 @@ free:
+ 	ath10k_fw_stats_pdevs_free(&stats.pdevs);
+ 	ath10k_fw_stats_vdevs_free(&stats.vdevs);
+ 	ath10k_fw_stats_peers_free(&stats.peers);
++	ath10k_fw_extd_stats_peers_free(&stats.peers_extd);
+ 
+ 	spin_unlock_bh(&ar->data_lock);
+ }
+@@ -2383,6 +2398,7 @@ int ath10k_debug_create(struct ath10k *a
+ 	INIT_LIST_HEAD(&ar->debug.fw_stats.pdevs);
+ 	INIT_LIST_HEAD(&ar->debug.fw_stats.vdevs);
+ 	INIT_LIST_HEAD(&ar->debug.fw_stats.peers);
++	INIT_LIST_HEAD(&ar->debug.fw_stats.peers_extd);
+ 
+ 	return 0;
+ }
+--- a/drivers/net/wireless/ath/ath10k/wmi.c
++++ b/drivers/net/wireless/ath/ath10k/wmi.c
+@@ -2951,6 +2951,7 @@ static int ath10k_wmi_10_4_op_pull_fw_st
+ 	u32 num_pdev_ext_stats;
+ 	u32 num_vdev_stats;
+ 	u32 num_peer_stats;
++	u32 num_bcnflt_stats;
+ 	u32 stats_id;
+ 	int i;
+ 
+@@ -2961,6 +2962,7 @@ static int ath10k_wmi_10_4_op_pull_fw_st
+ 	num_pdev_ext_stats = __le32_to_cpu(ev->num_pdev_ext_stats);
+ 	num_vdev_stats = __le32_to_cpu(ev->num_vdev_stats);
+ 	num_peer_stats = __le32_to_cpu(ev->num_peer_stats);
++	num_bcnflt_stats = __le32_to_cpu(ev->num_bcnflt_stats);
+ 	stats_id = __le32_to_cpu(ev->stats_id);
+ 
+ 	for (i = 0; i < num_pdev_stats; i++) {
+@@ -3001,7 +3003,7 @@ static int ath10k_wmi_10_4_op_pull_fw_st
+ 	/* fw doesn't implement vdev stats */
+ 
+ 	for (i = 0; i < num_peer_stats; i++) {
+-		const struct wmi_10_4_peer_extd_stats *src;
++		const struct wmi_10_4_peer_stats *src;
+ 		struct ath10k_fw_stats_peer *dst;
+ 		int stats_len;
+ 		bool extd_peer_stats = !!(stats_id & WMI_10_4_STAT_PEER_EXTD);
+@@ -3019,14 +3021,46 @@ static int ath10k_wmi_10_4_op_pull_fw_st
+ 		if (!dst)
+ 			continue;
+ 
+-		ath10k_wmi_10_4_pull_peer_stats(&src->common, dst);
+ 		/* FIXME: expose 10.4 specific values */
+-		if (extd_peer_stats)
+-			dst->rx_duration = __le32_to_cpu(src->rx_duration);
++		ath10k_wmi_10_4_pull_peer_stats(src, dst);
+ 
+ 		list_add_tail(&dst->list, &stats->peers);
+ 	}
+ 
++	for (i = 0; i < num_bcnflt_stats; i++) {
++		const struct wmi_10_4_bss_bcn_filter_stats *src;
++
++		src = (void *)skb->data;
++		if (!skb_pull(skb, sizeof(*src)))
++			return -EPROTO;
++
++		/* FIXME: expose values to userspace
++		 *
++		 * Note: Even though this loop seems to do nothing it is
++		 * required to parse following sub-structures properly.
++		 */
++	}
++
++	if ((stats_id & WMI_10_4_STAT_PEER_EXTD) == 0)
++		return 0;
++
++	for (i = 0; i < num_peer_stats; i++) {
++		const struct wmi_10_4_peer_extd_stats *src;
++		struct ath10k_fw_extd_stats_peer *dst;
++
++		src = (void *)skb->data;
++		if (!skb_pull(skb, sizeof(*src)))
++			return -EPROTO;
++
++		dst = kzalloc(sizeof(*dst), GFP_ATOMIC);
++		if (!dst)
++			continue;
++
++		ether_addr_copy(dst->peer_macaddr, src->peer_macaddr.addr);
++		dst->rx_duration = __le32_to_cpu(src->rx_duration);
++		list_add_tail(&dst->list, &stats->peers_extd);
++	}
++
+ 	return 0;
+ }
+ 

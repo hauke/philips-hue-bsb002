@@ -1,0 +1,35 @@
+--- a/drivers/net/wireless/ath/ath10k/txrx.c
++++ b/drivers/net/wireless/ath/ath10k/txrx.c
+@@ -159,6 +159,22 @@ struct ath10k_peer *ath10k_peer_find_by_
+ 	return NULL;
+ }
+ 
++struct ath10k_peer *ath10k_peer_find_by_addr(struct ath10k *ar, const u8 *addr)
++{
++	struct ath10k_peer *peer;
++
++	lockdep_assert_held(&ar->data_lock);
++
++	list_for_each_entry(peer, &ar->peers, list) {
++		if (!ether_addr_equal(peer->addr, addr))
++			continue;
++
++		return peer;
++	}
++
++	return NULL;
++}
++
+ static int ath10k_wait_for_peer_common(struct ath10k *ar, int vdev_id,
+ 				       const u8 *addr, bool expect_mapped)
+ {
+--- a/drivers/net/wireless/ath/ath10k/txrx.h
++++ b/drivers/net/wireless/ath/ath10k/txrx.h
+@@ -25,6 +25,7 @@ int ath10k_txrx_tx_unref(struct ath10k_h
+ struct ath10k_peer *ath10k_peer_find(struct ath10k *ar, int vdev_id,
+ 				     const u8 *addr);
+ struct ath10k_peer *ath10k_peer_find_by_id(struct ath10k *ar, int peer_id);
++struct ath10k_peer *ath10k_peer_find_by_addr(struct ath10k *ar, const u8 *addr);
+ int ath10k_wait_for_peer_created(struct ath10k *ar, int vdev_id,
+ 				 const u8 *addr);
+ int ath10k_wait_for_peer_deleted(struct ath10k *ar, int vdev_id,

@@ -1,0 +1,11 @@
+--- a/programs/pkey/rsa_genkey.c
++++ b/programs/pkey/rsa_genkey.c
+@@ -33,7 +33,7 @@
+ #include "polarssl/x509.h"
+ #include "polarssl/rsa.h"
+ 
+-#define KEY_SIZE 1024
++#define KEY_SIZE 2048
+ #define EXPONENT 65537
+ 
+ #if !defined(POLARSSL_BIGNUM_C) || !defined(POLARSSL_ENTROPY_C) ||   \

@@ -1,0 +1,64 @@
+From 461172f4859a936e41ab5967200600da6f5b4df2 Mon Sep 17 00:00:00 2001
+From: Pieter Smith <pieter.smith@philips.com>
+Date: Thu, 30 Apr 2015 18:32:41 +0200
+Subject: [PATCH 923/923] bsb002: adds support for board
+
+---
+ arch/mips/ath79/Kconfig     | 15 +++++++++++++++
+ arch/mips/ath79/Makefile    |  1 +
+ arch/mips/ath79/machtypes.h |  1 +
+ 3 files changed, 17 insertions(+)
+
+diff --git a/arch/mips/ath79/Kconfig b/arch/mips/ath79/Kconfig
+index 853e2ae..be8f96a 100644
+--- a/arch/mips/ath79/Kconfig
++++ b/arch/mips/ath79/Kconfig
+@@ -195,6 +195,21 @@ config ATH79_MACH_CUS531_NAND
+ 	  Say 'Y' here if you want your kernel to support the
+ 	  Qualcomm Atheros CUS531 nand reference board.
+ 
++config ATH79_MACH_BSB002
++	bool "Philips BSB002 board"
++	select SOC_QCA953X
++	select ATH79_DEV_GPIO_BUTTONS
++	select ATH79_DEV_LEDS_GPIO
++	select ATH79_DEV_SPI
++	select ATH79_DEV_NAND
++	select ATH79_DEV_USB
++	select ATH79_DEV_WMAC
++	select ATH79_DEV_ETH
++	select ATH79_DEV_M25P80
++	help
++	  Say 'Y' here if you want your kernel to support the
++	  Philips BSB002 board.
++
+ config ATH79_MACH_DB120
+ 	bool "Atheros DB120 reference board"
+ 	select SOC_AR934X
+diff --git a/arch/mips/ath79/Makefile b/arch/mips/ath79/Makefile
+index 6bf7327..542855d 100644
+--- a/arch/mips/ath79/Makefile
++++ b/arch/mips/ath79/Makefile
+@@ -58,6 +58,7 @@ obj-$(CONFIG_ATH79_MACH_CAP4200AG)	+= mach-cap4200ag.o
+ obj-$(CONFIG_ATH79_MACH_CUS531)		+= mach-cus531.o
+ obj-$(CONFIG_ATH79_MACH_CUS531_DUAL)	+= mach-cus531.o
+ obj-$(CONFIG_ATH79_MACH_CUS531_NAND)	+= mach-cus531.o
++obj-$(CONFIG_ATH79_MACH_BSB002)		+= mach-bsb002.o
+ obj-$(CONFIG_ATH79_MACH_DB120)		+= mach-db120.o
+ obj-$(CONFIG_ATH79_MACH_DIR_505_A1)	+= mach-dir-505-a1.o
+ obj-$(CONFIG_ATH79_MACH_DIR_600_A1)	+= mach-dir-600-a1.o
+diff --git a/arch/mips/ath79/machtypes.h b/arch/mips/ath79/machtypes.h
+index 2c7f8fb..7b3ae1e 100644
+--- a/arch/mips/ath79/machtypes.h
++++ b/arch/mips/ath79/machtypes.h
+@@ -41,6 +41,7 @@ enum ath79_mach_type {
+ 	ATH79_MACH_CUS531,		/* Qualcomm Atheros CUS531 board */
+ 	ATH79_MACH_CUS531_DUAL,		/* Qualcomm Atheros CUS531 dual board */
+ 	ATH79_MACH_CUS531_NAND,		/* Qualcomm Atheros CUS531 nand board */
++	ATH79_MACH_BSB002,		/* Philips BSB002 board */
+ 	ATH79_MACH_DB120,		/* Atheros DB120 reference board */
+ 	ATH79_MACH_PB44,		/* Atheros PB44 reference board */
+ 	ATH79_MACH_DIR_505_A1,		/* D-Link DIR-505 rev. A1 */
+-- 
+1.9.1
+

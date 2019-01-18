@@ -1,0 +1,116 @@
+--- a/drivers/net/wireless/ath/ath10k/debugfs_sta.c
++++ b/drivers/net/wireless/ath/ath10k/debugfs_sta.c
+@@ -646,6 +646,106 @@ void ath10k_fetch_10_2_tx_stats(struct a
+ 	ath10k_debug_process_tx_stats(ar, peer_id, p_tx_stats);
+ }
+ 
++#define str(s) #s
++#define STATS_OUTPUT_FORMAT(name) 					\
++	do {								\
++	len += scnprintf(buf + len, size - len, "%s\n", str(name));	\
++	len += scnprintf(buf + len, size - len, " VHT MCS %s\n  ",	\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	for (i = 0; i < VHT_MCS_NUM; i++)				\
++		len += scnprintf(buf + len, size - len, "%llu ",	\
++				arsta->tx_stats.name## _vht[i]);	\
++	len += scnprintf(buf + len, size - len, "\n");			\
++	len += scnprintf(buf + len, size - len, " HT MCS %s\n  ",	\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	for (i = 0; i < HT_MCS_NUM; i++)				\
++		len += scnprintf(buf + len, size - len, "%llu ",	\
++				arsta->tx_stats.name## _ht[i]);		\
++	len += scnprintf(buf + len, size - len, "\n");			\
++	len += scnprintf(buf + len, size - len,				\
++			" BW %s (20,40,80,160 MHz)\n  ",		\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	len += scnprintf(buf + len, size - len, "%llu %llu %llu %llu\n",\
++			arsta->tx_stats.name## _bw[0],			\
++			arsta->tx_stats.name## _bw[1],			\
++			arsta->tx_stats.name## _bw[2],			\
++			arsta->tx_stats.name## _bw[3]);			\
++	len += scnprintf(buf + len, size - len,				\
++			" NSS %s (1x1,2x2,3x3,4x4)\n  ",		\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	len += scnprintf(buf + len, size - len, "%llu %llu %llu %llu\n",\
++			arsta->tx_stats.name## _nss[0],			\
++			arsta->tx_stats.name## _nss[1],			\
++			arsta->tx_stats.name## _nss[2],			\
++			arsta->tx_stats.name## _nss[3]);		\
++	len += scnprintf(buf + len, size - len, " GI %s (LGI,SGI)\n  ",	\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	len += scnprintf(buf + len, size - len, "%llu %llu\n",	\
++			arsta->tx_stats.name## _gi[0],			\
++			arsta->tx_stats.name## _gi[1]);			\
++	len += scnprintf(buf + len, size - len,				\
++			" legacy rate %s (1,2 ... Mbps)\n  ",		\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	for (i = 0; i < LEGACY_RATE_NUM; i++)				\
++		len += scnprintf(buf + len, size - len, "%llu ",	\
++			arsta->tx_stats.name## _legacy_rates[i]);	\
++	len += scnprintf(buf + len, size - len, "\n");			\
++	len += scnprintf(buf + len, size - len, " Rate table %s\n  ",	\
++		(strstr(str(name), "pkts")) ? "packets" : "bytes");	\
++	for (i = 0; i < VHT_RATE_NUM; i++) {				\
++		len += scnprintf(buf + len, size - len, "%llu\t",	\
++			arsta->tx_stats.name## _rate_num[i]);		\
++		if (!((i + 1) % 8))					\
++			len += scnprintf(buf + len, size - len, "\n  ");\
++	}								\
++	len += scnprintf(buf + len, size - len, "\n");			\
++	} while (0)
++
++static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
++					       char __user *user_buf,
++					       size_t count, loff_t *ppos)
++{
++
++	struct ieee80211_sta *sta = file->private_data;
++	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
++	char *buf;
++	int len = 0, i, retval = 0, size = 16 * 1024;
++
++	buf = kzalloc(size, GFP_KERNEL);
++	if (buf == NULL)
++		return -ENOMEM;
++
++	STATS_OUTPUT_FORMAT(succ_pkts);
++	STATS_OUTPUT_FORMAT(succ_bytes);
++	STATS_OUTPUT_FORMAT(ampdu_pkts);
++	STATS_OUTPUT_FORMAT(ampdu_bytes);
++	STATS_OUTPUT_FORMAT(fail_pkts);
++	STATS_OUTPUT_FORMAT(fail_bytes);
++	STATS_OUTPUT_FORMAT(retry_pkts);
++	STATS_OUTPUT_FORMAT(retry_bytes);
++
++	len += scnprintf(buf + len, size - len,
++			"\nTX duration\n %llu usecs\n", arsta->tx_stats.tx_duration);
++	len += scnprintf(buf + len, size - len,
++			"BA fails\n %llu\n", arsta->tx_stats.ba_fails);
++	len += scnprintf(buf + len, size - len,
++			"ack fails\n %llu\n", arsta->tx_stats.ack_fails);
++
++	if (len > size)
++		len = size;
++	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
++	kfree(buf);
++
++	return retval;
++}
++
++static const struct file_operations fops_tx_stats = {
++	.read = ath10k_dbg_sta_dump_tx_stats,
++	.open = simple_open,
++	.owner = THIS_MODULE,
++	.llseek = default_llseek,
++};
++
+ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+ 			    struct ieee80211_sta *sta, struct dentry *dir)
+ {
+@@ -656,4 +756,6 @@ void ath10k_sta_add_debugfs(struct ieee8
+ 	debugfs_create_file("delba", S_IWUSR, dir, sta, &fops_delba);
+ 	debugfs_create_file("rx_duration", S_IRUGO, dir, sta,
+ 			    &fops_rx_duration);
++	debugfs_create_file("tx_stats", S_IRUGO, dir, sta,
++			    &fops_tx_stats);
+ }

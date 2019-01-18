@@ -1,0 +1,155 @@
+--- a/drivers/net/wireless/ath/ath10k/core.h
++++ b/drivers/net/wireless/ath/ath10k/core.h
+@@ -324,6 +324,7 @@ struct ath10k_peer {
+ 	struct ieee80211_key_conf *keys[WMI_MAX_KEY_INDEX + 1];
+ 
+ 	struct ath10k_tid_rx *tid_rx[IEEE80211_NUM_TIDS];
++	u16 last_rx_seq_ctrl[IEEE80211_NUM_TIDS + 1];
+ };
+ 
+ struct ath10k_txq {
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -1587,6 +1587,38 @@ static int ath10k_htt_rx_get_tot_mpdu_co
+ 	return mpdu_count;
+ }
+ 
++static bool ath10k_htt_rx_dup_check(struct ath10k_htt *htt, u8 *rx_hdr,
++				    u16 peerid, u8 tid)
++{
++	struct ath10k *ar = htt->ar;
++	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx_hdr;
++	struct ath10k_peer *peer;
++	bool is_dup = false;
++
++	spin_lock_bh(&ar->data_lock);
++
++	peer = ath10k_peer_find_by_id(ar, peerid);
++	if (!peer) {
++		is_dup = false;
++		goto exit;
++	}
++
++	if (!ieee80211_is_data_qos(hdr->frame_control))
++		tid = IEEE80211_NUM_TIDS;
++
++	if (ieee80211_has_retry(hdr->frame_control) &&
++	    peer->last_rx_seq_ctrl[tid] == __le16_to_cpu(hdr->seq_ctrl)) {
++		is_dup = true;
++		goto exit;
++	}
++
++	peer->last_rx_seq_ctrl[tid] = __le16_to_cpu(hdr->seq_ctrl);
++
++exit:
++	spin_unlock_bh(&ar->data_lock);
++	return is_dup;
++}
++
+ static int ath10k_htt_rx_no_reorder(struct ath10k_htt *htt, int mpdu_count)
+ {
+ 	int i;
+@@ -1773,6 +1805,8 @@ static void ath10k_htt_rx_reorder_rel(st
+ 	num_mpdus = ath10k_htt_rx_reorder_get_mpdus(htt, peerid, tid, seq_start,
+ 						    seq_end, mpdus);
+ 
++	rx_status.flag |= RX_FLAG_DUP_VALIDATED;
++
+ 	for (i = 0; i < num_mpdus; i++) {
+ 		ath10k_htt_rx_h_ppdu(ar, &mpdus[i], &rx_status, 0xffff);
+ 		ath10k_htt_rx_h_filter(ar, &mpdus[i], &rx_status);
+@@ -1830,6 +1864,13 @@ static int ath10k_htt_rx_proc_mpdu(struc
+ 					 &amsdu))
+ 		return 0;
+ 
++	if (ath10k_htt_rx_dup_check(htt, rxd->rx_hdr_status, peerid, tid)) {
++		__skb_queue_purge(&amsdu);
++		return 0;
++	}
++
++	rx_status.flag |= RX_FLAG_DUP_VALIDATED;
++
+ 	/* Process and pass amsdu list to mac80211 when failed to store the
+ 	 * frames in reorder buffer because these may be non-aggregated frames.
+ 	 */
+@@ -1842,18 +1883,55 @@ static int ath10k_htt_rx_proc_mpdu(struc
+ 	return 0;
+ }
+ 
++static int ath10k_htt_rx_drop_mpdu_range(struct ath10k_htt *htt)
++{
++	struct ath10k *ar = htt->ar;
++	struct sk_buff_head amsdu;
++	int ret;
++
++	/* TODO: Below logic is duplicated in more than one place, move it to
++	 * a function to avoid repetiion.
++	 */
++	__skb_queue_head_init(&amsdu);
++
++	spin_lock_bh(&htt->rx_ring.lock);
++	if (htt->rx_confused) {
++		spin_unlock_bh(&htt->rx_ring.lock);
++		return -EIO;
++	}
++	ret = ath10k_htt_rx_amsdu_pop(htt, &amsdu);
++	spin_unlock_bh(&htt->rx_ring.lock);
++
++	if (ret < 0) {
++		ath10k_warn(ar, "rx ring became corrupted: %d\n", ret);
++		__skb_queue_purge(&amsdu);
++		/* FIXME: It's probably a good idea to reboot the
++		 * device instead of leaving it inoperable.
++		 */
++		htt->rx_confused = true;
++		return ret;
++	}
++
++	__skb_queue_purge(&amsdu);
++
++	return 0;
++}
++
+ static int ath10k_htt_rx_proc_mpdu_range(struct ath10k_htt *htt, u16 peerid,
+ 					 u8 tid, int mpdu_count, int status)
+ {
+ 	int i;
+ 	int ret = 0;
+ 
+-	/* TODO: Check the the status for duplication. As per fw team,
+-	 * HTT_RX_IND_MPDU_STATUS_ERR_DUP will be set for duplicated
+-	 * aggregated frames. There are quite a lot of out-of-order
+-	 * indication during iperf UDP traffic when duplication is not
+-	 * handled in the driver.
+-	 */
++	if (status == HTT_RX_IND_MPDU_STATUS_ERR_DUP) {
++		for (i = 0; i < mpdu_count; i++) {
++			ret = ath10k_htt_rx_drop_mpdu_range(htt);
++			if (ret)
++				break;
++		}
++		return ret;
++	}
++
+ 	if (status != HTT_RX_IND_MPDU_STATUS_OK) {
+ 		ret = ath10k_htt_rx_no_reorder(htt, mpdu_count);
+ 		return ret;
+--- a/drivers/net/wireless/ath/ath10k/txrx.c
++++ b/drivers/net/wireless/ath/ath10k/txrx.c
+@@ -192,6 +192,7 @@ void ath10k_peer_map_event(struct ath10k
+ {
+ 	struct ath10k *ar = htt->ar;
+ 	struct ath10k_peer *peer;
++	int i;
+ 
+ 	if (ev->peer_id >= ATH10K_MAX_NUM_PEER_IDS) {
+ 		ath10k_warn(ar,
+@@ -210,6 +211,8 @@ void ath10k_peer_map_event(struct ath10k
+ 		peer->vdev_id = ev->vdev_id;
+ 		ether_addr_copy(peer->addr, ev->addr);
+ 		list_add(&peer->list, &ar->peers);
++		for (i = 0; i <= IEEE80211_NUM_TIDS; i++)
++			peer->last_rx_seq_ctrl[i] = USHRT_MAX;
+ 		wake_up(&ar->peer_mapping_wq);
+ 	}
+ 

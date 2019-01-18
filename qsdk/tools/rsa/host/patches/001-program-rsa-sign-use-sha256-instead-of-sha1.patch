@@ -1,0 +1,42 @@
+--- a/programs/pkey/rsa_sign.c
++++ b/programs/pkey/rsa_sign.c
+@@ -29,7 +29,7 @@
+ #include <stdio.h>
+ 
+ #include "polarssl/rsa.h"
+-#include "polarssl/sha1.h"
++#include "polarssl/sha256.h"
+ 
+ #if !defined(POLARSSL_BIGNUM_C) || !defined(POLARSSL_RSA_C) ||  \
+     !defined(POLARSSL_SHA1_C) || !defined(POLARSSL_FS_IO)
+@@ -49,7 +49,7 @@ int main( int argc, char *argv[] )
+     int ret;
+     size_t i;
+     rsa_context rsa;
+-    unsigned char hash[20];
++    unsigned char hash[32];
+     unsigned char buf[POLARSSL_MPI_MAX_SIZE];
+ 
+     ret = 1;
+@@ -107,17 +107,17 @@ int main( int argc, char *argv[] )
+      * Compute the SHA-1 hash of the input file,
+      * then calculate the RSA signature of the hash.
+      */
+-    printf( "\n  . Generating the RSA/SHA-1 signature" );
++    printf( "\n  . Generating the RSA/SHA256 signature" );
+     fflush( stdout );
+ 
+-    if( ( ret = sha1_file( argv[1], hash ) ) != 0 )
++    if( ( ret = sha256_file( argv[1], hash, 0 ) ) != 0 )
+     {
+         printf( " failed\n  ! Could not open or read %s\n\n", argv[1] );
+         goto exit;
+     }
+ 
+-    if( ( ret = rsa_pkcs1_sign( &rsa, NULL, NULL, RSA_PRIVATE, POLARSSL_MD_SHA1,
+-                                20, hash, buf ) ) != 0 )
++    if( ( ret = rsa_pkcs1_sign( &rsa, NULL, NULL, RSA_PRIVATE, POLARSSL_MD_SHA256,
++                                32, hash, buf ) ) != 0 )
+     {
+         printf( " failed\n  ! rsa_pkcs1_sign returned -0x%0x\n\n", -ret );
+         goto exit;

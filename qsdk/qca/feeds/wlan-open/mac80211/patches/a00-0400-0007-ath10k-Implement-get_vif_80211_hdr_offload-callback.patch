@@ -1,0 +1,59 @@
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -7479,6 +7479,48 @@ ath10k_mac_op_switch_vif_chanctx(struct
+ 	return 0;
+ }
+ 
++static int ath10k_mac_op_get_vif_80211_hdr_offl(struct ieee80211_hw *hw,
++						struct ieee80211_vif *vif,
++						bool use_4addr, bool *supported)
++{
++	struct ath10k *ar = hw->priv;
++	int ret = 0;
++
++	mutex_lock(&ar->conf_mutex);
++
++	if (ar->wmi.pdev_param->rx_decap_mode == WMI_PDEV_PARAM_UNSUPPORTED &&
++	    ar->wmi.vdev_param->rx_decap_type == WMI_VDEV_PARAM_UNSUPPORTED) {
++		*supported = false;
++		goto out;
++	}
++
++	switch (vif->type) {
++	case NL80211_IFTYPE_AP:
++		*supported = true;
++		break;
++	case NL80211_IFTYPE_STATION:
++	case NL80211_IFTYPE_AP_VLAN:
++		*supported = use_4addr ? false : true;
++		break;
++	case NL80211_IFTYPE_WDS:
++	case NL80211_IFTYPE_MONITOR:
++	case NL80211_IFTYPE_ADHOC:
++	case NL80211_IFTYPE_MESH_POINT:
++	case NL80211_IFTYPE_P2P_DEVICE:
++		*supported = false;
++		break;
++	default:
++		ath10k_warn(ar, "unsupported interface type %d\n", vif->type);
++		ret = -EINVAL;
++		break;
++	}
++
++out:
++	mutex_unlock(&ar->conf_mutex);
++
++	return ret;
++}
++
+ static const struct ieee80211_ops ath10k_ops = {
+ 	.tx				= ath10k_mac_op_tx,
+ 	.wake_tx_queue			= ath10k_mac_op_wake_tx_queue,
+@@ -7519,6 +7561,7 @@ static const struct ieee80211_ops ath10k
+ 	.assign_vif_chanctx		= ath10k_mac_op_assign_vif_chanctx,
+ 	.unassign_vif_chanctx		= ath10k_mac_op_unassign_vif_chanctx,
+ 	.switch_vif_chanctx		= ath10k_mac_op_switch_vif_chanctx,
++	.get_vif_80211_hdr_offload	= ath10k_mac_op_get_vif_80211_hdr_offl,
+ 
+ 	CFG80211_TESTMODE_CMD(ath10k_tm_cmd)
+ 

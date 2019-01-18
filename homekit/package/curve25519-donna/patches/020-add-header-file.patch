@@ -1,0 +1,18 @@
+--- /dev/null
++++ b/curve25519-donna.h
+@@ -0,0 +1,15 @@
++#ifndef CURVE25519_DONNA_H
++#define CURVE25519_DONNA_H
++
++#ifdef __cplusplus
++extern "C"
++{
++#endif
++
++int curve25519_donna(unsigned char *mypublic, const unsigned char *secret, const unsigned char *basepoint);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* CURVE25519_DONNA_H */

@@ -1,0 +1,11 @@
+--- a/drivers/net/wireless/ath/ath10k/pci.c
++++ b/drivers/net/wireless/ath/ath10k/pci.c
+@@ -2725,7 +2725,7 @@ static int ath10k_pci_hif_fetch_cal_eepr
+ 	return 0;
+ 
+ err_free:
+-	kfree(data);
++	kfree(caldata);
+ 
+ 	return -EINVAL;
+ }

@@ -1,0 +1,81 @@
+--- a/drivers/net/wireless/ath/wil6210/main.c
++++ b/drivers/net/wireless/ath/wil6210/main.c
+@@ -17,6 +17,7 @@
+ #include <linux/moduleparam.h>
+ #include <linux/if_arp.h>
+ #include <linux/etherdevice.h>
++#include <linux/rtnetlink.h>
+ 
+ #include "wil6210.h"
+ #include "txrx.h"
+@@ -356,10 +357,12 @@ static void wil_fw_error_worker(struct w
+ 	struct wil6210_priv *wil = container_of(work, struct wil6210_priv,
+ 						fw_error_worker);
+ 	struct wireless_dev *wdev = wil->wdev;
++	struct net_device *ndev = wil_to_ndev(wil);
++	int rc;
+ 
+ 	wil_dbg_misc(wil, "fw error worker\n");
+ 
+-	if (!netif_running(wil_to_ndev(wil))) {
++	if (!netif_running(ndev)) {
+ 		wil_info(wil, "No recovery - interface is down\n");
+ 		return;
+ 	}
+@@ -381,32 +384,47 @@ static void wil_fw_error_worker(struct w
+ 
+ 	wil->last_fw_recovery = jiffies;
+ 
++	wil_info(wil, "fw error recovery requested (try %d)...\n",
++		 wil->recovery_count);
++	if (!no_fw_recovery)
++		wil->recovery_state = fw_recovery_running;
++	if (0 != wil_wait_for_recovery(wil))
++		return;
++
++	rtnl_lock();
+ 	mutex_lock(&wil->mutex);
+ 	switch (wdev->iftype) {
+ 	case NL80211_IFTYPE_STATION:
+ 	case NL80211_IFTYPE_P2P_CLIENT:
+ 	case NL80211_IFTYPE_MONITOR:
+-		wil_info(wil, "fw error recovery requested (try %d)...\n",
+-			 wil->recovery_count);
+-		if (!no_fw_recovery)
+-			wil->recovery_state = fw_recovery_running;
+-		if (0 != wil_wait_for_recovery(wil))
+-			break;
+-
++		/* silent recovery, upper layers will see disconnect */
+ 		__wil_down(wil);
+ 		__wil_up(wil);
+ 		break;
+ 	case NL80211_IFTYPE_AP:
+ 	case NL80211_IFTYPE_P2P_GO:
+-		wil_info(wil, "No recovery for AP-like interface\n");
+-		/* recovery in these modes is done by upper layers */
++		if (no_fw_recovery) /* upper layers do recovery */
++			break;
++		/* upper layers will see down/up events */
++		wil_info(wil, "Recovery for AP-like interface - ifdown...\n");
++		mutex_unlock(&wil->mutex); /* protected by rtnl_lock */
++		dev_close(ndev); /* never returns error */
++		msleep(1000);
++		wil_info(wil, "... ifup...\n");
++		rc = dev_open(ndev);
++		if (rc)
++			wil_err(wil, "dev_open: %d\n", rc);
++		mutex_lock(&wil->mutex);
++		wil_info(wil, "... completed\n");
+ 		break;
+ 	default:
+ 		wil_err(wil, "No recovery - unknown interface type %d\n",
+ 			wdev->iftype);
+ 		break;
+ 	}
++
+ 	mutex_unlock(&wil->mutex);
++	rtnl_unlock();
+ }
+ 
+ static int wil_find_free_vring(struct wil6210_priv *wil)

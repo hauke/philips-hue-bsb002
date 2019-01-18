@@ -1,0 +1,348 @@
+--- a/drivers/net/wireless/ath/ath10k/ahb.c
++++ b/drivers/net/wireless/ath/ath10k/ahb.c
+@@ -25,7 +25,7 @@
+ #include "ahb.h"
+ 
+ static const struct of_device_id ath10k_ahb_of_match[] = {
+-	{ .compatible = "qcom,ipq4019-wifi",
++	{ .compatible = "qca,wifi-ipq40xx",
+ 	  .data = (void *)ATH10K_HW_QCA4019
+ 	},
+ 	{ }
+@@ -512,10 +512,17 @@ static int ath10k_ahb_resource_init(stru
+ 	struct device *dev;
+ 	struct resource *res;
+ 	int ret;
++	u32 core_id;
+ 
+ 	pdev = ar_ahb->pdev;
+ 	dev = &pdev->dev;
+ 
++	ret = of_property_read_u32(dev->of_node, "core-id", &core_id);
++	if (ret) {
++		ath10k_err(ar, "failed to get code id: %d\n", ret);
++		goto out;
++	}
++
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res) {
+ 		ath10k_err(ar, "failed to get memory resource\n");
+@@ -575,6 +582,8 @@ static int ath10k_ahb_resource_init(stru
+ 		goto err_clock_deinit;
+ 	}
+ 
++	ar_ahb->core_id = core_id;
++
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "irq: %d\n", ar_ahb->irq);
+ 
+ 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "mem: 0x%p mem_len: %lu gcc mem: 0x%p tcsr_mem: 0x%p\n",
+@@ -757,6 +766,32 @@ out:
+ 	return ret;
+ }
+ 
++static struct ath10k_hif_caldata_mtd_params ath10k_ahb_caldata_mtd_map[] = {
++	{       /* core 0 */
++		.mtd_name = "0:ART",
++		.addr = 0x1000,
++		.len = 12064,
++	},
++	{       /* core 1 */
++		.mtd_name = "0:ART",
++		.addr = 0x5000,
++		.len = 12064,
++	},
++};
++
++static int ath10k_ahb_hif_get_caldata_mtd_map(struct ath10k *ar,
++			struct ath10k_hif_caldata_mtd_params **info)
++{
++	struct ath10k_ahb *ar_ahb = ath10k_ahb_priv(ar);
++
++	if (!QCA_REV_40XX(ar) ||
++	    (ar_ahb->core_id > (ARRAY_SIZE(ath10k_ahb_caldata_mtd_map) - 1)))
++		return -ENODATA;
++
++	*info = &ath10k_ahb_caldata_mtd_map[ar_ahb->core_id];
++	return 0;
++}
++
+ static const struct ath10k_hif_ops ath10k_ahb_hif_ops = {
+ 	.tx_sg                  = ath10k_pci_hif_tx_sg,
+ 	.diag_read              = ath10k_pci_hif_diag_read,
+@@ -772,6 +807,7 @@ static const struct ath10k_hif_ops ath10
+ 	.power_down             = ath10k_pci_hif_power_down,
+ 	.read32                 = ath10k_ahb_read32,
+ 	.write32                = ath10k_ahb_write32,
++	.get_caldata_mtd_map    = ath10k_ahb_hif_get_caldata_mtd_map,
+ };
+ 
+ static const struct ath10k_bus_ops ath10k_ahb_bus_ops = {
+--- a/drivers/net/wireless/ath/ath10k/ahb.h
++++ b/drivers/net/wireless/ath/ath10k/ahb.h
+@@ -38,6 +38,8 @@ struct ath10k_ahb {
+ 	struct reset_control *radio_warm_rst;
+ 	struct reset_control *radio_srif_rst;
+ 	struct reset_control *cpu_init_rst;
++
++	u32 core_id;
+ };
+ 
+ #ifdef CPTCFG_ATH10K_AHB
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -19,6 +19,8 @@
+ #include <linux/firmware.h>
+ #include <linux/of.h>
+ #include <asm/byteorder.h>
++#include <linux/mtd/mtd.h>
++#include <linux/vmalloc.h>
+ 
+ #include "core.h"
+ #include "mac.h"
+@@ -511,6 +513,106 @@ exit:
+ 	return ret;
+ }
+ 
++static int ath10k_verify_mtd_cal_data_chksum(u32 *data, u32 len)
++{
++	u16 *buf = (u16 *)data;
++	u16 sum;
++	int i;
++
++	sum = 0;
++
++	for (i = 0; i < (len / 2); i++)
++		sum ^= le16_to_cpu(*buf++);
++
++	if (sum != 0xffff)
++		return -EINVAL;
++
++	return 0;
++}
++
++static int ath10k_download_cal_data_mtd(struct ath10k *ar)
++{
++	struct ath10k_hif_caldata_mtd_params *info;
++	struct mtd_info *mtd;
++	size_t retlen;
++	u32 *buf;
++	int ret, i;
++
++	ret = ath10k_hif_get_caldata_mtd_map(ar, &info);
++	if (ret) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "mtd caldata is not supported\n");
++		return ret;
++	}
++
++	ath10k_dbg(ar, ATH10K_DBG_BOOT, "mtd name: %s addr: 0x%x len: %d\n",
++		   info->mtd_name, info->addr, info->len);
++
++	buf = vmalloc(info->len);
++	if (!buf) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "failed to alloc memory for mtd caldata\n");
++		return -ENOMEM;
++	}
++
++	mtd = get_mtd_device_nm(info->mtd_name);
++	if (IS_ERR_OR_NULL(mtd)) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "mtd device %s not found to read caldata\n",
++			   info->mtd_name);
++		ret = PTR_ERR(mtd);
++		goto release_buf;
++	}
++
++	ret = mtd_read(mtd, info->addr, info->len, &retlen, (u_char *)buf);
++	if (ret) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "failed to read caldata from mtd device %s: %d\n",
++			   info->mtd_name, ret);
++		goto release_mtd;
++	}
++
++	if (retlen != info->len) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "got only %d bytes from mtd (requested: %d)\n",
++			   retlen, info->len);
++		goto release_mtd;
++	}
++
++	ret = ath10k_verify_mtd_cal_data_chksum(buf, info->len);
++	if (ret) {
++		ath10k_dbg(ar, ATH10K_DBG_BOOT,
++			   "checksum verification failed\n");
++		goto release_mtd;
++	}
++
++	for (i = 0; i < (info->len / 4); i++)
++		buf[i] = cpu_to_le32(buf[i]);
++
++	ret = ath10k_download_board_data(ar, (const void *)buf,
++					 (size_t)info->len);
++	if (ret) {
++		ath10k_err(ar, "failed to download mtd caldata: %d\n", ret);
++		goto release_mtd;
++	}
++
++	ath10k_dbg(ar, ATH10K_DBG_BOOT,
++		   "cal data downloaded successfully\n");
++
++	put_mtd_device(mtd);
++	vfree(buf);
++
++	return 0;
++
++release_mtd:
++	put_mtd_device(mtd);
++
++release_buf:
++	vfree(buf);
++
++	return ret;
++}
++
+ static int ath10k_download_cal_file(struct ath10k *ar,
+ 				    const struct firmware *file)
+ {
+@@ -1372,6 +1474,23 @@ static int ath10k_download_cal_data(stru
+ 		   "pre cal download procedure failed, try cal file: %d\n",
+ 		   ret);
+ 
++	ret = ath10k_download_cal_data_mtd(ar);
++	if (ret == 0) {
++		/* Run otp with get chip id param to move downloaded caldata
++		 * content to temporary memory in the target.
++		 */
++		ret = ath10k_core_get_board_id_from_otp(ar);
++		if (ret)
++			return ret;
++
++		/* Download board data and run otp. This step will make sure
++		 * the target derives final version of board specific info
++		 * from board data content and caldata content downloaded in
++		 * previous steps.
++		*/
++		goto done;
++	}
++
+ 	ret = ath10k_download_cal_file(ar, ar->cal_file);
+ 	if (ret == 0) {
+ 		ar->cal_mode = ATH10K_CAL_MODE_FILE;
+@@ -2025,6 +2144,8 @@ static int ath10k_core_probe_fw(struct a
+ 			   "could not load pre cal data: %d\n", ret);
+ 	}
+ 
++	ath10k_download_cal_data_mtd(ar);
++
+ 	ret = ath10k_core_get_board_id_from_otp(ar);
+ 	if (ret && ret != -EOPNOTSUPP) {
+ 		ath10k_err(ar, "failed to get board id from otp: %d\n",
+--- a/drivers/net/wireless/ath/ath10k/hif.h
++++ b/drivers/net/wireless/ath/ath10k/hif.h
+@@ -30,6 +30,13 @@ struct ath10k_hif_sg_item {
+ 	u16 len;
+ };
+ 
++struct ath10k_hif_caldata_mtd_params
++{
++	const char *mtd_name;
++	u32 addr;
++	u32 len;
++};
++
+ struct ath10k_hif_ops {
+ 	/* send a scatter-gather list to the target */
+ 	int (*tx_sg)(struct ath10k *ar, u8 pipe_id,
+@@ -87,6 +94,9 @@ struct ath10k_hif_ops {
+ 
+ 	int (*suspend)(struct ath10k *ar);
+ 	int (*resume)(struct ath10k *ar);
++	/* Get caldata mapping detail where it's located in the flash */
++	int (*get_caldata_mtd_map)(struct ath10k *ar,
++				   struct ath10k_hif_caldata_mtd_params **info);
+ 
+ 	/* fetch calibration data from target eeprom */
+ 	int (*fetch_cal_eeprom)(struct ath10k *ar, void **data,
+@@ -216,4 +226,13 @@ static inline int ath10k_hif_fetch_cal_e
+ 	return ar->hif.ops->fetch_cal_eeprom(ar, data, data_len);
+ }
+ 
++static inline int ath10k_hif_get_caldata_mtd_map(struct ath10k *ar,
++			struct ath10k_hif_caldata_mtd_params **info)
++{
++	if (!ar->hif.ops->get_caldata_mtd_map)
++		return -EOPNOTSUPP;
++
++	return ar->hif.ops->get_caldata_mtd_map(ar, info);
++}
++
+ #endif /* _HIF_H_ */
+--- a/drivers/net/wireless/ath/ath10k/pci.c
++++ b/drivers/net/wireless/ath/ath10k/pci.c
+@@ -2715,6 +2715,56 @@ err_free:
+ 	return -EINVAL;
+ }
+ 
++static struct ath10k_hif_caldata_mtd_params ath10k_pci_caldata_mtd_map[] = {
++	{       /* pci dev 0 */
++		.mtd_name = "0:ART",
++		.addr = 0x1000,
++		.len = 12064,
++	},
++	{       /* pci dev 1 */
++		.mtd_name = "0:ART",
++		.addr = 0x5000,
++		.len = 12064,
++	},
++	{       /* pci dev 2 */
++		.mtd_name = "0:ART",
++		.addr = 0x9000,
++		.len = 12064,
++	},
++};
++
++static int ath10k_pci_hif_get_caldata_mtd_map(struct ath10k *ar,
++			struct ath10k_hif_caldata_mtd_params **info)
++{
++	int ret, index = -1;
++
++	ret = memcmp("0000", dev_name(ar->dev), 4);
++	if (ret == 0) {
++		index = 0;
++		goto done;
++	}
++
++	ret = memcmp("0001", dev_name(ar->dev), 4);
++	if (ret == 0) {
++		index = 1;
++		goto done;
++	}
++
++	ret = memcmp("0002", dev_name(ar->dev), 4);
++	if (ret == 0) {
++		index = 2;
++		goto done;
++	}
++
++done:
++	if (!QCA_REV_9888(ar) || index < 0)
++		return -ENODATA;
++
++	*info = &ath10k_pci_caldata_mtd_map[index];
++	return 0;
++}
++
++
+ static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
+ 	.tx_sg			= ath10k_pci_hif_tx_sg,
+ 	.diag_read		= ath10k_pci_hif_diag_read,
+@@ -2730,6 +2780,7 @@ static const struct ath10k_hif_ops ath10
+ 	.power_down		= ath10k_pci_hif_power_down,
+ 	.read32			= ath10k_pci_read32,
+ 	.write32		= ath10k_pci_write32,
++	.get_caldata_mtd_map    = ath10k_pci_hif_get_caldata_mtd_map,
+ #ifdef CONFIG_PM
+ 	.suspend		= ath10k_pci_hif_suspend,
+ 	.resume			= ath10k_pci_hif_resume,

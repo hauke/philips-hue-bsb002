@@ -1,0 +1,20 @@
+#!/bin/sh
+. /lib/ntpd/utils.sh
+
+log notice "starting ntpd-monitor: SYNC_TIMEOUT=${SYNC_TIMEOUT}"
+	
+# There is no need to check for the gateway, because sysntpd is restarted by
+# the dhcp client whenever the gateway changes
+
+if ! is_time_synched_by_ntpd; then
+	sync_with_tls
+fi
+
+sleep ${SYNC_TIMEOUT}
+
+# If ntpd is able to sync the time, this process is killed by ntpd.script,
+# so we will never proceed further.
+
+log warning "time-out synching time with NTP: ${SYNC_TIMEOUT}s"
+restart_ntpd
+

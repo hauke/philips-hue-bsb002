@@ -1,0 +1,35 @@
+--- a/ed25519-hash-custom.h
++++ b/ed25519-hash-custom.h
+@@ -9,3 +9,32 @@
+ 	void ed25519_hash(uint8_t *hash, const uint8_t *in, size_t inlen);
+ */
+ 
++#ifndef ED25519_HASH_CUSTOM
++#define ED25519_HASH_CUSTOM
++#include "tomcrypt.h"
++
++typedef hash_state ed25519_hash_context;
++
++static void ed25519_hash_init(ed25519_hash_context *ctx)
++{
++    sha512_init(ctx);
++}
++
++static void ed25519_hash_update(ed25519_hash_context *ctx, const uint8_t *in, size_t inlen)
++{
++    sha512_process(ctx,(const unsigned char*)in,inlen);
++}
++
++static void ed25519_hash_final(ed25519_hash_context *ctx, uint8_t *hash)
++{
++    sha512_done(ctx,hash);
++}
++
++void ed25519_hash(uint8_t *hash, const uint8_t *in, size_t inlen)
++{
++    ed25519_hash_context ctx;
++    ed25519_hash_init(&ctx);
++    ed25519_hash_update(&ctx, in, inlen);
++    ed25519_hash_final(&ctx, hash);
++}
++#endif

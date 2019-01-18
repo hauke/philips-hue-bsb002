@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013-2014 OpenWrt.org
+
+START=00
+
+SYNC_NOTIFICATION_FILE=/var/ntpd/sync
+. /lib/ntpd/utils.sh
+
+updateDateTime() {
+	local newtime=$1
+	date -s @$newtime
+	notify_time_synched maxtime_etc
+}
+
+boot() {
+	local curtime="$(date +%s)"
+	local maxtime="$(find /etc -type f -exec date -r {} +%s \; | sort -nr | head -n1)"
+	[ $curtime -lt $maxtime ] && updateDateTime $maxtime
+}
+

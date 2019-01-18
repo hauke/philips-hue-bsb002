@@ -1,0 +1,41 @@
+--- a/ed25519-randombytes-custom.h
++++ b/ed25519-randombytes-custom.h
+@@ -6,3 +6,38 @@
+ 	ed25519_randombytes_unsafe is used by the batch verification function
+ 	to create random scalars
+ */
++
++#ifndef ED25519_RANDOMBYTES_CUSTOM
++#define ED25519_RANDOMBYTES_CUSTOM
++
++#include "tomcrypt.h"
++#include <stdio.h>
++
++/* Return random/noise data from urandom on unix-like system
++ * Returns -1 if fail, or less bytes than required
++ */
++int prng_get_entropy(unsigned char *buf, size_t len)
++{
++    FILE *f = NULL;
++    int ret = -1;
++    if ((len > 0) && buf && (f=fopen("/dev/urandom","rb")))
++    {
++      ret = fread(buf,sizeof(*buf),len,f);
++      fclose(f);
++    }
++    return ret;
++}
++
++void ED25519_FN(ed25519_randombytes_unsafe)(void *p, size_t len)
++{
++    prng_state ps;
++    unsigned char ent[32];
++    fortuna_start(&ps);
++    prng_get_entropy(ent,32);
++    fortuna_add_entropy(ent,32,&ps);
++    fortuna_ready(&ps);
++    fortuna_read(p,len,&ps);
++    fortuna_done(&ps);
++}
++
++#endif

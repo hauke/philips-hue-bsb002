@@ -1,0 +1,15 @@
+diff --git a/interface-ip.c b/interface-ip.c
+index d5a3832..63d5b6f 100644
+--- a/interface-ip.c
++++ b/interface-ip.c
+@@ -1199,9 +1199,9 @@
+ 			continue;
+ 
+ 		fprintf(f, "# Interface %s\n", iface->name);
+-		write_resolv_conf_entries(f, &iface->config_ip, iface->ifname);
+ 		if (!iface->proto_ip.no_dns)
+ 			write_resolv_conf_entries(f, &iface->proto_ip, iface->ifname);
++		write_resolv_conf_entries(f, &iface->config_ip, iface->ifname);
+ 	}
+ 	fflush(f);
+ 	rewind(f);

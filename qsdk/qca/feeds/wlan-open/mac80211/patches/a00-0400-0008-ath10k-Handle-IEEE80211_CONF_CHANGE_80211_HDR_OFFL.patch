@@ -1,0 +1,89 @@
+--- a/drivers/net/wireless/ath/ath10k/core.h
++++ b/drivers/net/wireless/ath/ath10k/core.h
+@@ -714,6 +714,9 @@ enum ath10k_dev_flags {
+ 
+ 	/* Per Station statistics service */
+ 	ATH10K_FLAG_PEER_STATS,
++
++	/* Ethernet mode encap/decap is enabled for data frames */
++	ATH10K_FLAG_ETHERNET_MODE_ENABLED,
+ };
+ 
+ enum ath10k_cal_mode {
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -4669,6 +4669,45 @@ static int ath10k_mac_txpower_recalc(str
+ 	return 0;
+ }
+ 
++static int ath10k_config_rx_decap_type(struct ath10k *ar,
++				       enum ath10k_hw_txrx_mode decap_type)
++{
++	struct ath10k_vif *arvif;
++	u32 pdev_param = ar->wmi.pdev_param->rx_decap_mode;
++	u32 vdev_param = ar->wmi.vdev_param->rx_decap_type;
++	int ret = 0;
++
++	if (pdev_param == WMI_PDEV_PARAM_UNSUPPORTED &&
++	    vdev_param == WMI_VDEV_PARAM_UNSUPPORTED) {
++		ath10k_warn(ar, "failed to set decap type to :%d, unsupported\n",
++			    decap_type);
++		return -ENOTSUPP;
++	}
++
++	if (pdev_param != WMI_PDEV_PARAM_UNSUPPORTED) {
++		ret = ath10k_wmi_pdev_set_param(ar, pdev_param, decap_type);
++		ath10k_warn(ar, "failed to set decap type to :%d, ret :%i\n",
++			    decap_type, ret);
++		return ret;
++	}
++
++	/* 10.4 firmware supports per vdev decap configuration */
++	list_for_each_entry(arvif, &ar->arvifs, list) {
++		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac vdev %d rx decap type %d\n",
++			   arvif->vdev_id, decap_type);
++
++		ret = ath10k_wmi_vdev_set_param(ar, arvif->vdev_id,
++						vdev_param, decap_type);
++		if (ret) {
++			ath10k_warn(ar, "failed to set rx decap type for vdev %d: %d\n",
++				    arvif->vdev_id, ret);
++			break;
++		}
++	}
++
++	return ret;
++}
++
+ static int ath10k_config(struct ieee80211_hw *hw, u32 changed)
+ {
+ 	struct ath10k *ar = hw->priv;
+@@ -4687,6 +4726,28 @@ static int ath10k_config(struct ieee8021
+ 			ath10k_warn(ar, "failed to recalc monitor: %d\n", ret);
+ 	}
+ 
++	if (changed & IEEE80211_CONF_CHANGE_80211_HDR_OFFL) {
++		enum ath10k_hw_txrx_mode decap_type;
++
++		if (conf->encap_decap_80211_offloaded)
++			decap_type = ATH10K_HW_TXRX_ETHERNET;
++		else
++			decap_type = ATH10K_HW_TXRX_NATIVE_WIFI;
++
++		ret = ath10k_config_rx_decap_type(ar, decap_type);
++		if (ret)
++			goto out;
++
++		if (conf->encap_decap_80211_offloaded) {
++			set_bit(ATH10K_FLAG_ETHERNET_MODE_ENABLED,
++				&ar->dev_flags);
++		} else {
++			clear_bit(ATH10K_FLAG_ETHERNET_MODE_ENABLED,
++				  &ar->dev_flags);
++		}
++	}
++
++out:
+ 	mutex_unlock(&ar->conf_mutex);
+ 	return ret;
+ }

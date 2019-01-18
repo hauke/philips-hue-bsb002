@@ -1,0 +1,131 @@
+--- a/drivers/net/wireless/ath/ath10k/core.c
++++ b/drivers/net/wireless/ath/ath10k/core.c
+@@ -78,6 +78,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA988X_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA9887_HW_1_0_VERSION,
+@@ -97,6 +98,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA9887_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_2_1_VERSION,
+@@ -115,6 +117,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_2_1_VERSION,
+@@ -133,6 +136,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_3_0_VERSION,
+@@ -151,6 +155,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA6174_HW_3_2_VERSION,
+@@ -170,6 +175,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA6174_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA99X0_HW_2_0_DEV_VERSION,
+@@ -194,6 +200,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
++		.decap_align_bytes = 1,
+ 	},
+ 	{
+ 		.id = QCA9984_HW_1_0_DEV_VERSION,
+@@ -218,6 +225,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
++		.decap_align_bytes = 1,
+ 	},
+ 	{
+ 		.id = QCA9888_HW_2_0_DEV_VERSION,
+@@ -240,6 +248,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA99X0_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
++		.decap_align_bytes = 1,
+ 	},
+ 	{
+ 		.id = QCA9377_HW_1_0_DEV_VERSION,
+@@ -258,6 +267,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA9377_HW_1_1_DEV_VERSION,
+@@ -276,6 +286,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA9377_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca988x_rx_desc_ops,
++		.decap_align_bytes = 4,
+ 	},
+ 	{
+ 		.id = QCA4019_HW_1_0_DEV_VERSION,
+@@ -301,6 +312,7 @@ static const struct ath10k_hw_params ath
+ 			.board_ext_size = QCA4019_BOARD_EXT_DATA_SZ,
+ 		},
+ 		.hw_rx_desc_ops = &qca99x0_rx_desc_ops,
++		.decap_align_bytes = 1,
+ 	},
+ };
+ 
+--- a/drivers/net/wireless/ath/ath10k/htt_rx.c
++++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
+@@ -1111,6 +1111,7 @@ static void *ath10k_htt_rx_h_find_rfc104
+ 	size_t hdr_len, crypto_len;
+ 	void *rfc1042;
+ 	bool is_first, is_last, is_amsdu;
++	int bytes_aligned = ar->hw_params.decap_align_bytes;
+ 
+ 	rxd = (void *)msdu->data - sizeof(*rxd);
+ 	hdr = (void *)rxd->rx_hdr_status;
+@@ -1127,8 +1128,8 @@ static void *ath10k_htt_rx_h_find_rfc104
+ 		hdr_len = ieee80211_hdrlen(hdr->frame_control);
+ 		crypto_len = ath10k_htt_rx_crypto_param_len(ar, enctype);
+ 
+-		rfc1042 += round_up(hdr_len, 4) +
+-			   round_up(crypto_len, 4);
++		rfc1042 += round_up(hdr_len, bytes_aligned) +
++			   round_up(crypto_len, bytes_aligned);
+ 	}
+ 
+ 	if (is_amsdu)
+--- a/drivers/net/wireless/ath/ath10k/hw.h
++++ b/drivers/net/wireless/ath/ath10k/hw.h
+@@ -438,6 +438,9 @@ struct ath10k_hw_params {
+ 	} fw;
+ 
+ 	const struct ath10k_hw_rx_desc_ops *hw_rx_desc_ops;
++
++	/* Number of bytes used for alignment in rx_hdr_status of rx desc. */
++	int decap_align_bytes;
+ };
+ 
+ struct htt_rx_desc;

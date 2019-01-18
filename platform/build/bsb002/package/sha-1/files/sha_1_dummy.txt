@@ -1,0 +1,2 @@
+SHA-1 Checker unique dummy file
+This file is here just to let the License tool pick up the dummy package that contains the License
